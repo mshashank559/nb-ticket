@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Environment variables (SENSITIVE - never commit!)
+.env
+.env.local
+.env.production
+
+# Build output
+dist/
+
+# Scratch / temp files
+scratch/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
