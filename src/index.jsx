@@ -5,8 +5,13 @@ import './index.css';
 import './App.css';
 import AppEnhanced from './AppEnhanced';
 
-// Configure API Base URL in production (e.g. Vercel pointing to AWS EC2 backend)
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+// Configure API Base URL in production
+// If running on HTTPS, never prepend an insecure HTTP URL to prevent browser Mixed Content errors.
+// Vercel automatically reverse-proxies /api/* to AWS on the server-side via vercel.json.
+const envApiUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+const API_BASE = (isHttps && envApiUrl.startsWith('http://')) ? '' : envApiUrl;
+
 if (API_BASE) {
   const originalFetch = window.fetch;
   window.fetch = function (resource, init) {

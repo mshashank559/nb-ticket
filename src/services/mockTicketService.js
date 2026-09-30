@@ -218,8 +218,10 @@ const TICKETS_KEY = 'netbounce_tickets_v3_clean';
 try {
   localStorage.removeItem('netbounce_tickets_v2');
   localStorage.removeItem('netbounce_notifs_v2');
+  localStorage.removeItem('netbounce_users_v2');
+  localStorage.removeItem('netbounce_users_v1');
 } catch (e) {}
-const USERS_KEY = 'netbounce_users_v2';
+const USERS_KEY = 'netbounce_users_v3_live';
 const NOTIFS_KEY = 'netbounce_notifs_v3';
 
 export const getStoredTickets = () => {

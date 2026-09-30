@@ -3481,7 +3481,9 @@ export function Shell({ role, currentUser, onSignOut }) {
   useEffect(() => {
     let socket;
     try {
-      const socketServer = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '') || undefined;
+      const envApiUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+      const socketServer = (isHttps && envApiUrl.startsWith('http://')) ? undefined : (envApiUrl || undefined);
       socket = io(socketServer, { transports: ['websocket', 'polling'] });
 
       const refreshTickets = () => {
