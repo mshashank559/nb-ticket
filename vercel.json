@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "http://13.201.80.51/api/$1"
+    },
+    {
+      "source": "/socket.io/(.*)",
+      "destination": "http://13.201.80.51/socket.io/$1"
+    }
+  ]
+}
