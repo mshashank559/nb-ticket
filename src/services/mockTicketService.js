@@ -279,10 +279,17 @@ export const analytics = {
 // Main Exported Ticket array for direct references
 export const tickets = initialTickets;
 
+// API Base URL (empty for local proxy, or set via VITE_API_URL in production Vercel)
+export const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL)
+  ? import.meta.env.VITE_API_URL.replace(/\/$/, '')
+  : '';
+
+export const apiUrl = (endpoint) => `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+
 // API Service Interface (Future Backend Ready)
 const syncToBackend = async (method, path = '', body = null) => {
   try {
-    const res = await fetch(`/api/tickets${path}`, {
+    const res = await fetch(apiUrl(`/api/tickets${path}`), {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
@@ -300,7 +307,7 @@ const syncToBackend = async (method, path = '', body = null) => {
 export const ticketApi = {
   list: async () => {
     try {
-      const res = await fetch('/api/tickets');
+      const res = await fetch(apiUrl('/api/tickets'));
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -314,7 +321,7 @@ export const ticketApi = {
 
   get: async (id) => {
     try {
-      const res = await fetch(`/api/tickets/${id}`);
+      const res = await fetch(apiUrl(`/api/tickets/${id}`));
       if (res.ok) return await res.json();
     } catch (e) {}
     return getStoredTickets().find((t) => t.id === id);

@@ -3481,7 +3481,8 @@ export function Shell({ role, currentUser, onSignOut }) {
   useEffect(() => {
     let socket;
     try {
-      socket = io({ transports: ['websocket', 'polling'] });
+      const socketServer = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '') || undefined;
+      socket = io(socketServer, { transports: ['websocket', 'polling'] });
 
       const refreshTickets = () => {
         ticketApi.list().then((list) => {
