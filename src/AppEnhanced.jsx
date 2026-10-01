@@ -1213,6 +1213,8 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
   const [auditLogs, setAuditLogs] = useState([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [securityNotice, setSecurityNotice] = useState('');
+  const [resetConfirmUser, setResetConfirmUser] = useState(null);
+  const [resettingDevice, setResettingDevice] = useState(false);
 
   const handleLoginAsUser = (targetUser) => {
     const targetRole =
@@ -1248,22 +1250,33 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
     setTimeout(() => setSecurityNotice(''), 4000);
   };
 
-  const handleResetDevice = async (targetUser) => {
-    if (!window.confirm(`Reset trusted device binding for ${targetUser.name}? They will be able to enroll a new machine on their next login.`)) {
-      return;
+  const handleResetDevice = (targetUser) => {
+    setResetConfirmUser(targetUser);
+  };
+
+  const handleConfirmResetDevice = async () => {
+    if (!resetConfirmUser) return;
+    setResettingDevice(true);
+    const targetUser = resetConfirmUser;
+    try {
+      const res = await securityApi.resetDevice({
+        targetUserId: targetUser.id,
+        performedBy: { name: currentUser || 'Process Analyst', role: role?.id || 'process_analyst' },
+        reason: 'Process Analyst reset trusted device binding',
+      });
+      if (res && res.user) {
+        onEditUser(res.user);
+      } else {
+        onEditUser({ ...targetUser, trustedDeviceId: '', trustedDeviceName: '', deviceStatus: 'ACTIVE' });
+      }
+      setSecurityNotice(`Device enrollment reset for ${targetUser.name}.`);
+      setTimeout(() => setSecurityNotice(''), 4000);
+      setResetConfirmUser(null);
+    } catch (err) {
+      console.error('Failed to reset device binding:', err);
+    } finally {
+      setResettingDevice(false);
     }
-    const res = await securityApi.resetDevice({
-      targetUserId: targetUser.id,
-      performedBy: { name: currentUser || 'Process Analyst', role: role?.id || 'process_analyst' },
-      reason: 'Process Analyst reset trusted device binding',
-    });
-    if (res && res.user) {
-      onEditUser(res.user);
-    } else {
-      onEditUser({ ...targetUser, trustedDeviceId: '', trustedDeviceName: '', deviceStatus: 'ACTIVE' });
-    }
-    setSecurityNotice(`Device enrollment reset for ${targetUser.name}.`);
-    setTimeout(() => setSecurityNotice(''), 4000);
   };
 
   // Edit state
@@ -2234,6 +2247,206 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
                 }}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Reset Device Binding Premium Floating Modal ── */}
+      {resetConfirmUser && createPortal(
+        <div
+          className="modal-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+          onClick={() => !resettingDevice && setResetConfirmUser(null)}
+        >
+          <div
+            className="modal-dialog"
+            style={{
+              position: 'relative',
+              background: '#ffffff',
+              borderRadius: '20px',
+              maxWidth: '480px',
+              width: '100%',
+              boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(226, 232, 240, 0.9)',
+              padding: '30px 28px 26px',
+              borderTop: '4px solid #f59e0b',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Close Button */}
+            <button
+              type="button"
+              onClick={() => !resettingDevice && setResetConfirmUser(null)}
+              disabled={resettingDevice}
+              style={{
+                position: 'absolute',
+                top: '18px',
+                right: '18px',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: resettingDevice ? 'not-allowed' : 'pointer',
+                color: '#64748b',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#64748b'; }}
+            >
+              <X size={16} />
+            </button>
+
+            {/* Glowing Icon Badge */}
+            <div style={{
+              width: '54px',
+              height: '54px',
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+              border: '1px solid #fde68a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#d97706',
+              marginBottom: '18px',
+              boxShadow: '0 8px 16px -4px rgba(245, 158, 11, 0.25)',
+            }}>
+              <RotateCcw size={26} style={{ strokeWidth: 2.2 }} />
+            </div>
+
+            {/* Title & Description */}
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '19px', fontWeight: 700, color: '#0f172a' }}>
+              Reset Trusted Device Binding
+            </h3>
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b', lineHeight: 1.5 }}>
+              Are you sure you want to reset the machine binding for this user?
+            </p>
+
+            {/* Employee & Machine Details Card */}
+            <div style={{
+              margin: '18px 0',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                <span style={{ color: '#64748b', fontWeight: 500 }}>Employee:</span>
+                <span style={{ color: '#0f172a', fontWeight: 700 }}>{resetConfirmUser.name}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                <span style={{ color: '#64748b', fontWeight: 500 }}>Email:</span>
+                <span style={{ color: '#334155', fontWeight: 500 }}>{resetConfirmUser.email}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                <span style={{ color: '#64748b', fontWeight: 500 }}>Currently Bound Device:</span>
+                <span style={{
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  border: '1px solid #fde68a',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}>
+                  {resetConfirmUser.trustedDeviceName || 'Registered Machine'}
+                </span>
+              </div>
+            </div>
+
+            {/* Explanatory Info Box */}
+            <div style={{
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '10px',
+              padding: '10px 12px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '8px',
+              marginBottom: '22px',
+            }}>
+              <CheckCircle2 size={16} color="#16a34a" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span style={{ fontSize: '12px', color: '#166534', lineHeight: 1.45 }}>
+                Resetting allows <strong>{resetConfirmUser.name}</strong> to enroll a new machine or laptop upon their next login attempt.
+              </span>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => !resettingDevice && setResetConfirmUser(null)}
+                disabled={resettingDevice}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: resettingDevice ? 'not-allowed' : 'pointer',
+                  opacity: resettingDevice ? 0.6 : 1,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmResetDevice}
+                disabled={resettingDevice}
+                style={{
+                  padding: '9px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #d97706 0%, #b45309 100%)',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: resettingDevice ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 4px 12px rgba(217, 119, 6, 0.35)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  opacity: resettingDevice ? 0.7 : 1,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {resettingDevice ? (
+                  <>
+                    <RefreshCw size={14} className="spin" />
+                    Resetting Device...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={14} />
+                    Confirm Reset
+                  </>
+                )}
               </button>
             </div>
           </div>
