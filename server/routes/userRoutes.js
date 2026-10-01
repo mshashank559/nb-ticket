@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
+import { Ticket } from '../models/Ticket.js';
 
 const router = express.Router();
 
@@ -17,7 +18,7 @@ const initialSeedUsers = [
     manager: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 6,
+    ticketsCount: 0,
     createdAt: "05 Jan 2026",
   },
   {
@@ -32,7 +33,7 @@ const initialSeedUsers = [
     manager: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 4,
+    ticketsCount: 0,
     createdAt: "05 Jan 2026",
   },
   {
@@ -47,7 +48,7 @@ const initialSeedUsers = [
     manager: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 20,
+    ticketsCount: 0,
     createdAt: "12 Jan 2026",
   },
   {
@@ -62,7 +63,7 @@ const initialSeedUsers = [
     manager: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 15,
+    ticketsCount: 0,
     createdAt: "10 Jan 2026",
   },
   {
@@ -77,7 +78,7 @@ const initialSeedUsers = [
     manager: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 5,
+    ticketsCount: 0,
     createdAt: "15 Jan 2026",
   },
   {
@@ -92,7 +93,7 @@ const initialSeedUsers = [
     manager: "Shilp Patel",
     managerEmail: "shilp.p@netbounceplacement.com",
     status: "Active",
-    ticketsCount: 9,
+    ticketsCount: 0,
     createdAt: "01 Feb 2026",
   },
   {
@@ -107,7 +108,7 @@ const initialSeedUsers = [
     manager: "Shilp Patel",
     managerEmail: "shilp.p@netbounceplacement.com",
     status: "Active",
-    ticketsCount: 14,
+    ticketsCount: 0,
     createdAt: "05 Feb 2026",
   },
   {
@@ -122,7 +123,7 @@ const initialSeedUsers = [
     manager: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 7,
+    ticketsCount: 0,
     createdAt: "15 Jan 2026",
   },
   {
@@ -137,7 +138,7 @@ const initialSeedUsers = [
     manager: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 18,
+    ticketsCount: 0,
     createdAt: "15 Jan 2026",
   },
   {
@@ -152,7 +153,7 @@ const initialSeedUsers = [
     manager: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 2,
+    ticketsCount: 0,
     createdAt: "15 Jan 2026",
   },
 ];
@@ -235,7 +236,29 @@ router.get('/', async (req, res) => {
       } catch (seedErr) {}
       users = await User.find().sort({ createdAt: 1 });
     }
-    res.json(users);
+
+    // Compute dynamic real tickets count from MongoDB tickets collection
+    try {
+      const allTickets = await Ticket.find({}, 'assignee createdBy creatorName');
+      const countMap = {};
+      for (const t of allTickets) {
+        if (t.assignee && t.assignee !== 'Unassigned') {
+          countMap[t.assignee] = (countMap[t.assignee] || 0) + 1;
+        }
+        const creator = t.createdBy || t.creatorName;
+        if (creator && creator !== t.assignee) {
+          countMap[creator] = (countMap[creator] || 0) + 1;
+        }
+      }
+      const usersWithDynamicCounts = users.map((u) => {
+        const doc = u.toObject ? u.toObject() : { ...u };
+        doc.ticketsCount = countMap[doc.name] || 0;
+        return doc;
+      });
+      return res.json(usersWithDynamicCounts);
+    } catch (countErr) {
+      return res.json(users);
+    }
   } catch (error) {
     console.error('Error fetching users:', error);
     res.status(500).json({ error: error.message });

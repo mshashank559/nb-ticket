@@ -206,16 +206,16 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     let nextId = req.body.id;
-    if (!nextId) {
-      // Find highest ticket number or count
+    const existing = nextId ? await Ticket.findOne({ id: nextId }) : null;
+    if (!nextId || existing) {
       const count = await Ticket.countDocuments();
-      const lastTicket = await Ticket.findOne({ id: /^TIC-/ }).sort({ createdAt: -1 });
+      const lastTicket = await Ticket.findOne({ id: /^(TKT|TIC)-/ }).sort({ createdAt: -1 });
+      let nextNum = 1001 + count;
       if (lastTicket && lastTicket.id) {
-        const num = parseInt(lastTicket.id.replace('TIC-', ''), 10);
-        nextId = `TIC-${isNaN(num) ? count + 1001 : num + 1}`;
-      } else {
-        nextId = `TIC-${1001 + count}`;
+        const num = parseInt(lastTicket.id.replace(/^(TKT|TIC)-/, ''), 10);
+        if (!isNaN(num) && num >= nextNum) nextNum = num + 1;
       }
+      nextId = `TKT-${nextNum}`;
     }
 
     const reqBody = { ...req.body };

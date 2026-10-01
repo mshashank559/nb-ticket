@@ -80,7 +80,6 @@ import {
   saveStoredUsers,
   getStoredNotifications,
   saveStoredNotifications,
-  activity as seedActivity,
   analytics,
   ticketApi,
   userApi,
@@ -1044,6 +1043,14 @@ export function TicketsPage({ routeFilter, role, currentUser, tickets, onDeleteT
         </div>
         {visible.length ? (
           <TicketTable rows={visible} currentRole={role} onDeleteTicket={onDeleteTicket} />
+        ) : (!tickets || tickets.length === 0) ? (
+          <div className="empty-state" data-testid="empty-state" style={{ padding: '60px 20px', textAlign: 'center' }}>
+            <FileText size={36} style={{ opacity: 0.35, margin: '0 auto 10px', display: 'block' }} />
+            <strong style={{ fontSize: '15px', display: 'block', color: 'var(--text)' }}>No tickets in database yet</strong>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+              Create a new ticket by clicking "+ Create Ticket". All ticket actions will be stored directly into MongoDB.
+            </span>
+          </div>
         ) : (
           <div className="empty-state" data-testid="empty-state">
             <FileText size={21} />
@@ -3959,7 +3966,7 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
 }
 
 export function Analytics({ tickets = [] }) {
-  const currentTickets = tickets && tickets.length ? tickets : getStoredTickets();
+  const currentTickets = Array.isArray(tickets) ? tickets : (getStoredTickets() || []);
   const total = currentTickets.length;
   const mktCount = currentTickets.filter((t) => t.team === 'Marketing' || t.creatorRole === 'marketing_tl').length;
   const salesCount = currentTickets.filter((t) => t.team === 'Sales' || t.creatorRole === 'sales_tl').length;
@@ -3973,6 +3980,14 @@ export function Analytics({ tickets = [] }) {
     { name: "Sales", value: salesPct, count: salesCount, color: "#0ea5a4" },
     { name: "Quality Ops", value: otherPct, count: otherCount, color: "#f59e0b" },
   ];
+
+  const last7Days = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    });
+  }, []);
 
   return (
     <div className="page page-enter">
@@ -4007,7 +4022,7 @@ export function Analytics({ tickets = [] }) {
                   <i />
                 </div>
                 <div className="x-axis">
-                  {analytics.labels.map((l) => (
+                  {last7Days.map((l) => (
                     <span key={l}>{l}</span>
                   ))}
                 </div>
@@ -4168,9 +4183,7 @@ export function Activity({ activity = [] }) {
       .catch(() => {});
   }, []);
 
-  const list = auditLogs.length
-    ? [...auditLogs, ...(activity.length ? activity : seedActivity)]
-    : (activity.length ? activity : seedActivity);
+  const list = auditLogs;
 
   return (
     <div className="page page-enter">
@@ -4180,41 +4193,49 @@ export function Activity({ activity = [] }) {
         subtitle="Immutable audit log of all ticket creations, assignments, SLA breaches, relaxations, and closures."
       />
       <section className="section-panel activity-log-panel">
-        {list.map((a, i) => (
-          <div className="audit-row" key={i}>
-            <div className="audit-date">{a.time}</div>
-            <div className="audit-copy">
-              <strong>
-                {a.user} <span>({a.role || 'System'})</span> · <b>{a.action}</b> on {a.ticket}
-              </strong>
-              <small>{a.detail}</small>
-              {a.previewUrl && (
-                <a
-                  href={a.previewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    color: '#1d4ed8',
-                    background: '#eff6ff',
-                    border: '1px solid #bfdbfe',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    fontSize: '10px',
-                    fontWeight: 600,
-                    marginTop: '4px',
-                    textDecoration: 'none',
-                    width: 'fit-content',
-                  }}
-                >
-                  📬 View Sent Email ↗
-                </a>
-              )}
-            </div>
+        {list.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
+            <FileText size={40} style={{ marginBottom: '12px', opacity: 0.3 }} />
+            <p style={{ fontSize: '15px', fontWeight: 600 }}>No activity logs yet</p>
+            <p style={{ fontSize: '13px', marginTop: '4px' }}>Immutable audit records will be logged automatically as real tickets are created, assigned, and updated.</p>
           </div>
-        ))}
+        ) : (
+          list.map((a, i) => (
+            <div className="audit-row" key={i}>
+              <div className="audit-date">{a.time}</div>
+              <div className="audit-copy">
+                <strong>
+                  {a.user} <span>({a.role || 'System'})</span> · <b>{a.action}</b> on {a.ticket}
+                </strong>
+                <small>{a.detail}</small>
+                {a.previewUrl && (
+                  <a
+                    href={a.previewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: '#1d4ed8',
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      marginTop: '4px',
+                      textDecoration: 'none',
+                      width: 'fit-content',
+                    }}
+                  >
+                    📬 View Sent Email ↗
+                  </a>
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </section>
     </div>
   );

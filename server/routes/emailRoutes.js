@@ -63,6 +63,16 @@ router.get('/audit-logs', async (req, res) => {
   }
 });
 
+// DELETE /api/email/audit-logs/clear-all - Clear audit logs
+router.delete('/audit-logs/clear-all', async (req, res) => {
+  try {
+    const result = await AuditLog.deleteMany({});
+    res.json({ message: 'Audit logs cleared successfully', deletedCount: result.deletedCount });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/email/config - View current email configuration status (safe, no secrets)
 router.get('/config', (req, res) => {
   res.json({

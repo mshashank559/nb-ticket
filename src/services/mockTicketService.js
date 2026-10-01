@@ -106,6 +106,38 @@ export const prohibitedMarketingTickets = [
 // Initial Users for User Management (Process Analyst can manage and add new TLs)
 export const initialUsers = [
   {
+    id: "USR-101",
+    name: "Rudra Patel",
+    email: "rudra.p@netbounceplacement.com",
+    password: "MM@123",
+    role: "manager",
+    roleName: "Manager",
+    department: "Executive Leadership",
+    team: "Management",
+    manager: "",
+    managerId: "",
+    managerEmail: "",
+    status: "Active",
+    ticketsCount: 0,
+    createdAt: "05 Jan 2026",
+  },
+  {
+    id: "USR-106",
+    name: "Shilp Patel",
+    email: "shilp.p@netbounceplacement.com",
+    password: "MM@123",
+    role: "manager",
+    roleName: "Manager",
+    department: "Executive Leadership",
+    team: "Management",
+    manager: "",
+    managerId: "",
+    managerEmail: "",
+    status: "Active",
+    ticketsCount: 0,
+    createdAt: "05 Jan 2026",
+  },
+  {
     id: "USR-102",
     name: "Shashank Mishra",
     email: "mshashank559@gmail.com",
@@ -114,6 +146,9 @@ export const initialUsers = [
     roleName: "Process Analyst & Admin",
     department: "Quality & Operations",
     team: "Central Governance",
+    manager: "",
+    managerId: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 0,
     createdAt: "28 Sept 2026",
@@ -127,8 +162,11 @@ export const initialUsers = [
     roleName: "Process Analyst",
     department: "Quality & Operations",
     team: "SLA Governance",
+    manager: "",
+    managerId: "",
+    managerEmail: "",
     status: "Active",
-    ticketsCount: 28,
+    ticketsCount: 0,
     createdAt: "10 Jan 2026",
   },
   {
@@ -140,31 +178,34 @@ export const initialUsers = [
     roleName: "Process Analyst",
     department: "Quality & Operations",
     team: "Operations Quality",
-    status: "Active",
-    ticketsCount: 5,
-    createdAt: "15 Jan 2026",
-  },
-  {
-    id: "USR-103",
-    name: "Mukesh Choudhary",
-    email: "mukesh.c@netbounceplacement.com",
-    password: "TL@123",
-    role: "sales_tl",
-    roleName: "Sales TL",
-    department: "Sales & Placement",
-    team: "Sales Team Alpha",
     manager: "",
     managerId: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 9,
+    ticketsCount: 0,
+    createdAt: "15 Jan 2026",
+  },
+  {
+    id: "USR-103",
+    name: "Mukesh Chaudhary",
+    email: "mukesh.c@netbounceplacement.com",
+    password: "TL@123",
+    role: "marketing_tl",
+    roleName: "Marketing TL",
+    department: "Marketing & Lead Gen",
+    team: "Marketing Team Alpha",
+    manager: "Shilp Patel",
+    managerId: "USR-106",
+    managerEmail: "shilp.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 0,
     createdAt: "01 Feb 2026",
   },
   {
     id: "USR-105",
     name: "Shivam Barot",
-    email: "shivam.s@netbounceplacement.com",
-    password: "Sales@123",
+    email: "shivam.b@netbounceplacement.com",
+    password: "TL@123",
     role: "marketing_tl",
     roleName: "Marketing TL",
     department: "Marketing & Lead Gen",
@@ -173,14 +214,14 @@ export const initialUsers = [
     managerId: "USR-106",
     managerEmail: "shilp.p@netbounceplacement.com",
     status: "Active",
-    ticketsCount: 14,
+    ticketsCount: 0,
     createdAt: "12 Jan 2026",
   },
   {
     id: "USR-109",
-    name: "Preet A.",
+    name: "Preet A",
     email: "preet.a@netbounceplacement.com",
-    password: "Sales@123",
+    password: "preet@12",
     role: "sales_tl",
     roleName: "Sales TL",
     department: "Sales & Placement",
@@ -189,29 +230,29 @@ export const initialUsers = [
     managerId: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 12,
+    ticketsCount: 0,
     createdAt: "14 Jan 2026",
   },
   {
     id: "USR-104",
     name: "Nilesh Gurjar",
-    email: "nilesh.k@netbounceplacement.com",
+    email: "nilesh.g@netbounceplacement.com",
     password: "Sales@123",
-    role: "marketing_tl",
-    roleName: "Marketing TL",
-    department: "Marketing & Lead Gen",
-    team: "Marketing Team South",
-    manager: "Shilp Patel",
-    managerId: "USR-106",
-    managerEmail: "shilp.p@netbounceplacement.com",
+    role: "sales_tl",
+    roleName: "Sales TL",
+    department: "Sales & Placement",
+    team: "Sales Team South",
+    manager: "",
+    managerId: "",
+    managerEmail: "",
     status: "Active",
-    ticketsCount: 18,
+    ticketsCount: 0,
     createdAt: "15 Jan 2026",
   },
   {
     id: "USR-110",
-    name: "Ved Prakash",
-    email: "ved.p@netbounceplacement.com",
+    name: "Ved Prakash Gupta",
+    email: "vedprakash.g@netbounceplacement.com",
     password: "Sales@123",
     role: "sales_tl",
     roleName: "Sales TL",
@@ -221,63 +262,28 @@ export const initialUsers = [
     managerId: "",
     managerEmail: "",
     status: "Active",
-    ticketsCount: 7,
+    ticketsCount: 0,
     createdAt: "20 Jan 2026",
-  },
-  {
-    id: "USR-101",
-    name: "Rudra Patel",
-    email: "rudra.p@netbounceplacement.com",
-    password: "MM@123",
-    role: "manager",
-    roleName: "Manager",
-    department: "Sales & Placement",
-    team: "Sales Leadership",
-    manager: "",
-    managerId: "",
-    managerEmail: "",
-    status: "Active",
-    ticketsCount: 6,
-    createdAt: "05 Jan 2026",
-  },
-  {
-    id: "USR-106",
-    name: "Shilp Patel",
-    email: "shilp.p@netbounceplacement.com",
-    password: "MM@123",
-    role: "manager",
-    roleName: "Manager",
-    department: "Marketing & Lead Gen",
-    team: "Marketing Leadership",
-    manager: "",
-    managerId: "",
-    managerEmail: "",
-    status: "Active",
-    ticketsCount: 4,
-    createdAt: "05 Jan 2026",
   },
 ];
 
-// Seed Tickets covering all lifecycle states:
-// - New/Unassigned (awaiting PA assignment, SLA not started)
-// - Assigned/Open (24h SLA active & running)
-// - Due Soon (< 1h remaining, reminder triggered)
-// - Breached (in dedicated PA Breach view)
-// - Relaxed (+1 Day relaxation granted by PA, original breach preserved)
-// - Escalated (escalated to Manager)
-// - Resolved & Closed
+// Clean tickets store (no fake / mock tickets)
 export const initialTickets = [];
 
 // In-memory / LocalStorage State Store
-const TICKETS_KEY = 'netbounce_tickets_v3_clean';
+const TICKETS_KEY = 'netbounce_tickets_v4_live';
+const USERS_KEY = 'netbounce_users_v4_live';
+const NOTIFS_KEY = 'netbounce_notifs_v4_live';
 try {
+  localStorage.removeItem('netbounce_tickets_v3_clean');
+  localStorage.removeItem('netbounce_tickets_v3');
   localStorage.removeItem('netbounce_tickets_v2');
+  localStorage.removeItem('netbounce_notifs_v3');
   localStorage.removeItem('netbounce_notifs_v2');
+  localStorage.removeItem('netbounce_users_v3_live');
   localStorage.removeItem('netbounce_users_v2');
   localStorage.removeItem('netbounce_users_v1');
 } catch (e) {}
-const USERS_KEY = 'netbounce_users_v3_live';
-const NOTIFS_KEY = 'netbounce_notifs_v3';
 
 export const getStoredTickets = () => {
   try {
@@ -343,9 +349,17 @@ export const saveStoredNotifications = (notifs) => {
 // Activity log aggregation
 export const activity = [];
 
+export const getDynamicLast7Days = () => {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  });
+};
+
 export const analytics = {
   trend: [0, 0, 0, 0, 0, 0, 0],
-  labels: ["18 Sep", "19 Sep", "20 Sep", "21 Sep", "22 Sep", "23 Sep", "24 Sep"],
+  labels: getDynamicLast7Days(),
   teams: [
     {
       name: "Marketing",
@@ -550,7 +564,7 @@ export const ticketApi = {
 
     // Call dedicated backend assign endpoint to start SLA and fire Support email
     try {
-      await fetch(`/api/tickets/${ticketId}/assign`, {
+      await fetch(apiUrl(`/api/tickets/${ticketId}/assign`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -614,7 +628,7 @@ export const ticketApi = {
 
     // Call dedicated backend escalate endpoint to fire Manager Support email
     try {
-      await fetch(`/api/tickets/${ticketId}/escalate`, {
+      await fetch(apiUrl(`/api/tickets/${ticketId}/escalate`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userName: paName, reason }),
@@ -679,7 +693,7 @@ export const ticketApi = {
 
     // Call dedicated backend relax endpoint to fire Extension email
     try {
-      await fetch(`/api/tickets/${ticketId}/relax`, {
+      await fetch(apiUrl(`/api/tickets/${ticketId}/relax`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userName: paName, reason: "1-day extension granted by Process Analyst" }),
@@ -737,7 +751,7 @@ export const ticketApi = {
 
     // Call dedicated backend resolve endpoint to fire Resolution email
     try {
-      await fetch(`/api/tickets/${ticketId}/resolve`, {
+      await fetch(apiUrl(`/api/tickets/${ticketId}/resolve`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userName, userRole, notes: notes || "Solution implemented and verified." }),
@@ -768,7 +782,7 @@ export const ticketApi = {
 
     // Sync reopen to backend using dedicated endpoint first
     try {
-      const res = await fetch(`/api/tickets/${ticketId}/reopen`, {
+      const res = await fetch(apiUrl(`/api/tickets/${ticketId}/reopen`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userName, userRole, reason }),
@@ -887,7 +901,7 @@ export const ticketApi = {
 
     // Call dedicated backend messages endpoint to send real email through Centralized Support Email
     try {
-      await fetch(`/api/tickets/${ticketId}/messages`, {
+      await fetch(apiUrl(`/api/tickets/${ticketId}/messages`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -907,7 +921,7 @@ export const ticketApi = {
   // Delete Ticket permanently from MongoDB and Local Cache
   delete: async (ticketId) => {
     try {
-      const res = await fetch(`/api/tickets/${ticketId}`, { method: 'DELETE' });
+      const res = await fetch(apiUrl(`/api/tickets/${ticketId}`), { method: 'DELETE' });
       if (res.ok) console.log(`[Ticket Deleted from DB] ${ticketId}`);
     } catch (e) {
       console.warn('Backend delete sync failed, updating local state', e);
@@ -922,10 +936,10 @@ export const ticketApi = {
 export const userApi = {
   list: async () => {
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch(apiUrl('/api/users'));
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           saveStoredUsers(data);
           return data;
         }
@@ -936,14 +950,14 @@ export const userApi = {
 
   getActiveSalesTLs: async () => {
     try {
-      const res = await fetch('/api/users/sales-tls/active');
+      const res = await fetch(apiUrl('/api/users/sales-tls/active'));
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) return data;
       }
     } catch (e) {}
     try {
-      const resAll = await fetch('/api/users?role=sales_tl&status=Active');
+      const resAll = await fetch(apiUrl('/api/users?role=sales_tl&status=Active'));
       if (resAll.ok) {
         const data = await resAll.json();
         if (Array.isArray(data)) return data;
@@ -957,7 +971,7 @@ export const userApi = {
 
   create: async (user) => {
     try {
-      const res = await fetch('/api/users', {
+      const res = await fetch(apiUrl('/api/users'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(user),
@@ -977,7 +991,7 @@ export const userApi = {
 
   update: async (updatedUser) => {
     try {
-      const res = await fetch(`/api/users/${updatedUser.id}`, {
+      const res = await fetch(apiUrl(`/api/users/${updatedUser.id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedUser),
@@ -998,7 +1012,7 @@ export const userApi = {
 
   delete: async (userId) => {
     try {
-      const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+      const res = await fetch(apiUrl(`/api/users/${userId}`), { method: 'DELETE' });
       if (res.ok) console.log(`[User Deleted from DB] ${userId}`);
     } catch (e) {
       console.warn('Backend delete user failed, updating local state', e);
@@ -1013,10 +1027,10 @@ export const userApi = {
 export const notificationApi = {
   list: async () => {
     try {
-      const res = await fetch('/api/notifications');
+      const res = await fetch(apiUrl('/api/notifications'));
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           saveStoredNotifications(data);
           return data;
         }
@@ -1026,12 +1040,12 @@ export const notificationApi = {
   },
   markRead: async (id) => {
     try {
-      await fetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
+      await fetch(apiUrl(`/api/notifications/${id}/read`), { method: 'PATCH' });
     } catch (e) {}
   },
   markAllRead: async () => {
     try {
-      await fetch('/api/notifications/read-all', { method: 'POST' });
+      await fetch(apiUrl('/api/notifications/read-all'), { method: 'POST' });
     } catch (e) {}
   },
 };
