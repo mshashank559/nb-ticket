@@ -30,7 +30,7 @@ async function logSecurityEvent({ userId, userName, userRole, eventType, perform
 // Main security gate endpoint called during login and periodic session checks
 router.post('/verify-access', async (req, res) => {
   try {
-    const { emailOrId, deviceId, deviceName } = req.body;
+    const { emailOrId, deviceId, deviceName } = req.body || {};
 
     // 1. Mobile Check Gate
     if (isMobileDevice(req)) {
@@ -169,7 +169,7 @@ router.get('/audit-logs', async (req, res) => {
 // POST /api/security/toggle-weekend-access - Process Analyst grants or revokes weekend access
 router.post('/toggle-weekend-access', async (req, res) => {
   try {
-    const { targetUserId, weekendAccess, performedBy, reason } = req.body;
+    const { targetUserId, weekendAccess, performedBy, reason } = req.body || {};
     const targetUser = await User.findOne({ id: targetUserId });
     if (!targetUser) {
       return res.status(404).json({ error: 'Target user not found' });
@@ -203,7 +203,7 @@ router.post('/toggle-weekend-access', async (req, res) => {
 // POST /api/security/reset-device - Process Analyst / Admin resets device enrollment
 router.post('/reset-device', async (req, res) => {
   try {
-    const { targetUserId, performedBy, reason } = req.body;
+    const { targetUserId, performedBy, reason } = req.body || {};
     const targetUser = await User.findOne({ id: targetUserId });
     if (!targetUser) {
       return res.status(404).json({ error: 'Target user not found' });
