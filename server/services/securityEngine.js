@@ -10,15 +10,23 @@ const TIMEZONE = 'Asia/Kolkata';
  * Checks if the request comes from a mobile phone or tablet.
  */
 export function isMobileDevice(req) {
+  if (!req) return false;
+
+  // 1. Check client-side hardware/fingerprint detection headers & payload
+  if (req.headers && req.headers['x-client-is-mobile'] === 'true') return true;
+  if (req.body && (req.body.isMobile === true || req.body.isClientMobile === true)) return true;
+
   const ua = (req.headers['user-agent'] || '').toLowerCase();
   const chMobile = req.headers['sec-ch-ua-mobile'];
 
-  // Check Chrome Client Hints
+  // 2. Check Chrome Client Hints
   if (chMobile === '?1') return true;
 
-  // Regex for mobile user agents
-  const mobileRegex = /(android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|webos|silk|fennec)/i;
-  return mobileRegex.test(ua);
+  // 3. Regex for mobile user agents
+  const mobileRegex = /(android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|webos|silk|fennec|windows phone|kindle|opera mobi|mobi)/i;
+  if (mobileRegex.test(ua)) return true;
+
+  return false;
 }
 
 /**

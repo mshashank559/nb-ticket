@@ -68,26 +68,92 @@ export function getDeviceFriendlyName() {
 }
 
 /**
- * Strictly checks if the client device is a mobile phone or tablet.
+ * Strictly checks if the client device is a mobile phone or tablet,
+ * including when the user enables "Desktop site" / "Desktop view" on their mobile browser.
  */
 export function isClientMobile() {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
 
-  // 1. Client Hints API
+  const ua = (navigator.userAgent || '').toLowerCase();
+  const platform = (navigator.platform || '').toLowerCase();
+
+  // 1. Client Hints API (Standard Mobile View)
   if (navigator.userAgentData && navigator.userAgentData.mobile === true) {
     return true;
   }
 
-  // 2. User Agent regex
-  const ua = (navigator.userAgent || '').toLowerCase();
-  const mobileRegex = /(android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|webos|silk|fennec)/i;
+  // 2. Direct User Agent Mobile Regex (Catches Android, iPhone, iPad, etc.)
+  const mobileRegex = /(android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|webos|silk|fennec|windows phone|kindle|opera mobi|mobi)/i;
   if (mobileRegex.test(ua)) {
     return true;
   }
 
-  // 3. Pointer & screen touch profile check
-  const isTouch = 'ontouchstart' in window || (navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
-  if (isTouch && window.innerWidth < 820 && window.screen.width < 820) {
+  // 3. iOS (iPhone / iPad) in Desktop View (Safari / Chrome iOS spoofs Macintosh / MacIntel)
+  // Real Macs NEVER have touchscreens (maxTouchPoints is always 0 on genuine Macs)
+  const isAppleTouch = (platform.includes('mac') || ua.includes('macintosh') || ua.includes('mac os x')) &&
+    Boolean(navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
+  if (isAppleTouch) {
+    return true;
+  }
+
+  // 4. Physical Screen Dimensions Check (Immune to Desktop Site zoom / virtual viewport)
+  // Even when a mobile browser sets viewport to 980px or 1024px in desktop mode,
+  // the physical screen dimensions remain small (e.g. 360-430px wide).
+  // Standard laptops and desktops have minimum screen dimension >= 700px (1366x768 -> 768px, 1080p -> 1080px).
+  const screenWidth = window.screen ? window.screen.width : 0;
+  const screenHeight = window.screen ? window.screen.height : 0;
+  const availWidth = window.screen ? window.screen.availWidth : 0;
+  const availHeight = window.screen ? window.screen.availHeight : 0;
+  const minScreenDim = Math.min(
+    screenWidth || 9999,
+    screenHeight || 9999,
+    availWidth || 9999,
+    availHeight || 9999
+  );
+
+  const hasTouch = Boolean(
+    'ontouchstart' in window ||
+    (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
+    (navigator.msMaxTouchPoints && navigator.msMaxTouchPoints > 0)
+  );
+
+  // If the device has touch and its physical screen smaller dimension is < 650px, it is definitely a phone
+  if (hasTouch && minScreenDim < 650) {
+    return true;
+  }
+
+  // 5. Coarse Pointer & No Hover Check (Standard Touchscreen Phone profile)
+  try {
+    const hasCoarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    const hasNoHover = window.matchMedia && window.matchMedia('(hover: none)').matches;
+    if (hasCoarsePointer && hasNoHover && minScreenDim < 820) {
+      return true;
+    }
+  } catch (e) {}
+
+  // 6. Hardware Vibration API (Exclusive to Smartphones; not supported on PC/Mac laptops)
+  if (typeof navigator.vibrate === 'function' && hasTouch && minScreenDim < 820) {
+    return true;
+  }
+
+  // 7. WebGL GPU Hardware Unmasked Renderer Check (Detects Qualcomm Adreno, ARM Mali, PowerVR)
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        const renderer = (gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '').toLowerCase();
+        // If it has a mobile GPU chipset and touch capability, it's a mobile device
+        if (/(adreno|mali|powervr|apple gpu|vivante)/i.test(renderer) && hasTouch) {
+          return true;
+        }
+      }
+    }
+  } catch (e) {}
+
+  // 8. Viewport size fallback for small screens
+  if (hasTouch && window.innerWidth < 820 && minScreenDim < 820) {
     return true;
   }
 
@@ -182,10 +248,20 @@ export const securityApi = {
   verifyAccess: async ({ emailOrId, deviceId, deviceName, isProcessTeamStation: forceStation }) => {
     try {
       const isStation = forceStation !== undefined ? forceStation : isProcessTeamStation();
+      const isMobile = isClientMobile();
       const res = await fetch('/api/security/verify-access', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailOrId, deviceId, deviceName, isProcessTeamStation: isStation }),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-is-mobile': isMobile ? 'true' : 'false',
+        },
+        body: JSON.stringify({
+          emailOrId,
+          deviceId,
+          deviceName,
+          isProcessTeamStation: isStation,
+          isMobile,
+        }),
       });
       const data = await res.json();
       return { status: res.status, ok: res.ok, data };
