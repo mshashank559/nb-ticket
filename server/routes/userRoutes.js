@@ -44,8 +44,8 @@ const initialSeedUsers = [
     roleName: "Process Analyst",
     department: "Quality & Operations",
     team: "Quality & Operations",
-    manager: "Rudra Patel",
-    managerEmail: "rudra.p@netbounceplacement.com",
+    manager: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 20,
     createdAt: "12 Jan 2026",
@@ -59,8 +59,8 @@ const initialSeedUsers = [
     roleName: "Process Analyst",
     department: "Quality & Operations",
     team: "Quality & Operations",
-    manager: "Rudra Patel",
-    managerEmail: "rudra.p@netbounceplacement.com",
+    manager: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 15,
     createdAt: "10 Jan 2026",
@@ -74,8 +74,8 @@ const initialSeedUsers = [
     roleName: "Process Analyst",
     department: "Quality & Operations",
     team: "Quality & Operations",
-    manager: "Shilp Patel",
-    managerEmail: "shilp.p@netbounceplacement.com",
+    manager: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 5,
     createdAt: "15 Jan 2026",
@@ -89,8 +89,8 @@ const initialSeedUsers = [
     roleName: "Marketing TL",
     department: "Marketing & Lead Gen",
     team: "Marketing",
-    manager: "Rudra Patel",
-    managerEmail: "rudra.p@netbounceplacement.com",
+    manager: "Shilp Patel",
+    managerEmail: "shilp.p@netbounceplacement.com",
     status: "Active",
     ticketsCount: 9,
     createdAt: "01 Feb 2026",
@@ -119,8 +119,8 @@ const initialSeedUsers = [
     roleName: "Sales TL",
     department: "Sales & Placement",
     team: "Sales",
-    manager: "Rudra Patel",
-    managerEmail: "rudra.p@netbounceplacement.com",
+    manager: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 7,
     createdAt: "15 Jan 2026",
@@ -134,8 +134,8 @@ const initialSeedUsers = [
     roleName: "Sales TL",
     department: "Sales & Placement",
     team: "Sales",
-    manager: "Shilp Patel",
-    managerEmail: "shilp.p@netbounceplacement.com",
+    manager: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 18,
     createdAt: "15 Jan 2026",
@@ -149,8 +149,8 @@ const initialSeedUsers = [
     roleName: "Sales TL",
     department: "Sales & Placement",
     team: "Sales",
-    manager: "Rudra Patel",
-    managerEmail: "rudra.p@netbounceplacement.com",
+    manager: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 2,
     createdAt: "15 Jan 2026",
@@ -162,13 +162,20 @@ let migrationDone = false;
 async function ensureManagerMapping() {
   if (migrationDone) return;
   try {
-    await User.updateOne({ email: /mukesh/i }, { $set: { manager: "Rudra Patel", managerEmail: "rudra.p@netbounceplacement.com", team: "Marketing" } });
-    await User.updateOne({ email: /shivam/i }, { $set: { manager: "Shilp Patel", managerEmail: "shilp.p@netbounceplacement.com", team: "Marketing" } });
-    await User.updateOne({ email: /preet/i }, { $set: { manager: "Rudra Patel", managerEmail: "rudra.p@netbounceplacement.com", team: "Sales" } });
-    await User.updateOne({ email: /nilesh/i }, { $set: { manager: "Shilp Patel", managerEmail: "shilp.p@netbounceplacement.com", team: "Sales" } });
-    await User.updateOne({ email: /vedprakash/i }, { $set: { manager: "Rudra Patel", managerEmail: "rudra.p@netbounceplacement.com", team: "Sales" } });
+    // Strictly clear manager for sales_tl, process_analyst, and manager roles
+    await User.updateMany(
+      { role: { $in: ['sales_tl', 'process_analyst', 'manager'] } },
+      { $set: { manager: '', managerEmail: '', managerId: '' } }
+    );
+    // Ensure Marketing TLs have Marketing Manager Shilp Patel
+    await User.updateMany(
+      { role: 'marketing_tl' },
+      { $set: { manager: 'Shilp Patel', managerEmail: 'shilp.p@netbounceplacement.com', team: 'Marketing' } }
+    );
     migrationDone = true;
-  } catch (e) {}
+  } catch (e) {
+    console.error('ensureManagerMapping error:', e);
+  }
 }
 
 // GET /api/users - List all users (Auto-seed if collection empty)
@@ -196,12 +203,18 @@ router.get('/', async (req, res) => {
 // POST /api/users - Create new user
 router.post('/', async (req, res) => {
   try {
+    const payload = { ...req.body };
+    if (payload.role && payload.role !== 'marketing_tl') {
+      payload.manager = '';
+      payload.managerEmail = '';
+      payload.managerId = '';
+    }
     const count = await User.countDocuments();
-    const id = req.body.id || `USR-${101 + count}`;
+    const id = payload.id || `USR-${101 + count}`;
     const newUser = new User({
-      ...req.body,
+      ...payload,
       id,
-      createdAt: req.body.createdAt || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      createdAt: payload.createdAt || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     });
     await newUser.save();
     console.log(`[User Created] ID: ${newUser.id}, Name: ${newUser.name}`);
@@ -214,9 +227,15 @@ router.post('/', async (req, res) => {
 // PUT /api/users/:id - Update user in MongoDB
 router.put('/:id', async (req, res) => {
   try {
+    const payload = { ...req.body };
+    if (payload.role && payload.role !== 'marketing_tl') {
+      payload.manager = '';
+      payload.managerEmail = '';
+      payload.managerId = '';
+    }
     const updated = await User.findOneAndUpdate(
       { id: req.params.id },
-      { $set: req.body },
+      { $set: payload },
       { new: true }
     );
     if (!updated) {

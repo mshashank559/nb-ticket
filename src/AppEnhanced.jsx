@@ -1221,9 +1221,10 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
     setEditEmail(u.email);
     setEditRoleId(u.role);
     setEditDepartment(u.department);
-    setEditManagerId(u.managerId || '');
-    setEditManagerName(u.manager || '');
-    setEditManagerEmail(u.managerEmail || '');
+    const isMkt = u.role === 'marketing_tl';
+    setEditManagerId(isMkt ? (u.managerId || '') : '');
+    setEditManagerName(isMkt ? (u.manager || '') : '');
+    setEditManagerEmail(isMkt ? (u.managerEmail || '') : '');
     setEditPassword('');
     setShowEditPwd(false);
   };
@@ -1231,16 +1232,23 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
   const handleEditRoleChange = (e) => {
     const val = e.target.value;
     setEditRoleId(val);
-    if (val === 'marketing_tl') setEditDepartment('Marketing & Lead Gen');
-    else if (val === 'sales_tl') setEditDepartment('Sales & Placement');
-    else if (val === 'process_analyst') setEditDepartment('Quality & Operations');
-    else setEditDepartment('Executive Leadership');
+    if (val === 'marketing_tl') {
+      setEditDepartment('Marketing & Lead Gen');
+    } else {
+      setEditManagerId('');
+      setEditManagerName('');
+      setEditManagerEmail('');
+      if (val === 'sales_tl') setEditDepartment('Sales & Placement');
+      else if (val === 'process_analyst') setEditDepartment('Quality & Operations');
+      else setEditDepartment('Executive Leadership');
+    }
   };
 
   const handleEditSubmit = (e) => {
     e.preventDefault();
     if (!editName || !editEmail) return;
     const roleObj = roles.find((r) => r.id === editRoleId) || roles[1];
+    const isMkt = editRoleId === 'marketing_tl';
     const updated = {
       ...editUser,
       name: editName,
@@ -1248,9 +1256,9 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
       role: editRoleId,
       roleName: roleObj.name,
       department: editDepartment,
-      manager: editManagerName,
-      managerId: editManagerId,
-      managerEmail: editManagerEmail,
+      manager: isMkt ? editManagerName : '',
+      managerId: isMkt ? editManagerId : '',
+      managerEmail: isMkt ? editManagerEmail : '',
       ...(editPassword ? { password: editPassword } : {}),
     };
     onEditUser && onEditUser(updated);
@@ -1260,10 +1268,16 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
   const handleRoleChange = (e) => {
     const val = e.target.value;
     setRoleId(val);
-    if (val === 'marketing_tl') setDepartment('Marketing & Lead Gen');
-    else if (val === 'sales_tl') setDepartment('Sales & Placement');
-    else if (val === 'process_analyst') setDepartment('Quality & Operations');
-    else setDepartment('Executive Leadership');
+    if (val === 'marketing_tl') {
+      setDepartment('Marketing & Lead Gen');
+    } else {
+      setManagerId('');
+      setManagerName('');
+      setManagerEmail('');
+      if (val === 'sales_tl') setDepartment('Sales & Placement');
+      else if (val === 'process_analyst') setDepartment('Quality & Operations');
+      else setDepartment('Executive Leadership');
+    }
   };
 
   const handleSubmit = (e) => {
@@ -1271,6 +1285,7 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
     if (!name || !email) return;
 
     const roleObj = roles.find((r) => r.id === roleId) || roles[1];
+    const isMkt = roleId === 'marketing_tl';
     const newUser = {
       id: `USR-${100 + users.length + 1}`,
       name,
@@ -1278,9 +1293,9 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
       role: roleId,
       roleName: roleObj.name,
       department,
-      manager: managerName,
-      managerId,
-      managerEmail,
+      manager: isMkt ? managerName : '',
+      managerId: isMkt ? managerId : '',
+      managerEmail: isMkt ? managerEmail : '',
       status: 'Active',
       ticketsCount: 0,
       createdAt: 'Today',
@@ -1291,6 +1306,9 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
     setShowAddModal(false);
     setName('');
     setEmail('');
+    setManagerId('');
+    setManagerName('');
+    setManagerEmail('');
     setNewPassword('');
   };
 
@@ -1514,6 +1532,9 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
               { label: 'User ID', value: viewUser.id, mono: true },
               { label: 'Role', value: viewUser.roleName || viewUser.role },
               { label: 'Department', value: viewUser.department },
+              ...(viewUser.role === 'marketing_tl' && viewUser.manager
+                ? [{ label: 'Reporting Manager', value: `${viewUser.manager} (${viewUser.managerEmail || ''})` }]
+                : []),
               { label: 'Status', value: viewUser.status || 'Active' },
             ].map(({ label, value, mono }) => (
               <div key={label} style={{
@@ -1733,27 +1754,29 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
                     <option value="Executive Leadership">Executive Leadership</option>
                   </select>
                 </label>
-                <label className="span-2" style={{ color: '#64748b', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Reporting Manager
-                  <select
-                    value={editManagerId}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setEditManagerId(val);
-                      const mgr = users.find((u) => u.id === val);
-                      setEditManagerName(mgr ? mgr.name : '');
-                      setEditManagerEmail(mgr ? mgr.email : '');
-                    }}
-                    style={{ background: 'transparent', border: 'none', borderBottom: '2px solid #e2e8f0', borderRadius: 0, padding: '8px 2px', outline: 'none', fontSize: '14px', fontWeight: 600, color: '#0f172a', width: '100%', cursor: 'pointer', boxShadow: 'none', appearance: 'auto' }}
-                    onFocus={(e) => { e.target.style.borderBottomColor = '#2563eb'; }}
-                    onBlur={(e) => { e.target.style.borderBottomColor = '#e2e8f0'; }}
-                  >
-                    <option value="">-- No Manager Assigned --</option>
-                    {users.filter((u) => u.role === 'manager').map((m) => (
-                      <option key={m.id} value={m.id}>{m.name} ({m.email})</option>
-                    ))}
-                  </select>
-                </label>
+                {editRoleId === 'marketing_tl' && (
+                  <label className="span-2" style={{ color: '#64748b', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Reporting Manager
+                    <select
+                      value={editManagerId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditManagerId(val);
+                        const mgr = users.find((u) => u.id === val);
+                        setEditManagerName(mgr ? mgr.name : '');
+                        setEditManagerEmail(mgr ? mgr.email : '');
+                      }}
+                      style={{ background: 'transparent', border: 'none', borderBottom: '2px solid #e2e8f0', borderRadius: 0, padding: '8px 2px', outline: 'none', fontSize: '14px', fontWeight: 600, color: '#0f172a', width: '100%', cursor: 'pointer', boxShadow: 'none', appearance: 'auto' }}
+                      onFocus={(e) => { e.target.style.borderBottomColor = '#2563eb'; }}
+                      onBlur={(e) => { e.target.style.borderBottomColor = '#e2e8f0'; }}
+                    >
+                      <option value="">-- No Manager Assigned --</option>
+                      {users.filter((u) => u.role === 'manager').map((m) => (
+                        <option key={m.id} value={m.id}>{m.name} ({m.email})</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="span-2" style={{ color: '#64748b', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   New Password <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none', fontSize: '11px' }}>(leave blank to keep current)</span>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -1846,24 +1869,26 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
                     <option value="Executive Leadership">Executive Leadership</option>
                   </select>
                 </label>
-                <label className="span-2">
-                  Reporting Manager
-                  <select
-                    value={managerId}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setManagerId(val);
-                      const mgr = users.find((u) => u.id === val);
-                      setManagerName(mgr ? mgr.name : '');
-                      setManagerEmail(mgr ? mgr.email : '');
-                    }}
-                  >
-                    <option value="">-- No Manager Assigned --</option>
-                    {users.filter((u) => u.role === 'manager').map((m) => (
-                      <option key={m.id} value={m.id}>{m.name} ({m.email})</option>
-                    ))}
-                  </select>
-                </label>
+                {roleId === 'marketing_tl' && (
+                  <label className="span-2">
+                    Reporting Manager
+                    <select
+                      value={managerId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setManagerId(val);
+                        const mgr = users.find((u) => u.id === val);
+                        setManagerName(mgr ? mgr.name : '');
+                        setManagerEmail(mgr ? mgr.email : '');
+                      }}
+                    >
+                      <option value="">-- No Manager Assigned --</option>
+                      {users.filter((u) => u.role === 'manager').map((m) => (
+                        <option key={m.id} value={m.id}>{m.name} ({m.email})</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="span-2">
                   Set Password
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>

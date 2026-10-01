@@ -153,9 +153,9 @@ export const initialUsers = [
     roleName: "Sales TL",
     department: "Sales & Placement",
     team: "Sales Team Alpha",
-    manager: "Rudra Patel",
-    managerId: "USR-101",
-    managerEmail: "rudra.p@netbounceplacement.com",
+    manager: "",
+    managerId: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 9,
     createdAt: "01 Feb 2026",
@@ -185,9 +185,9 @@ export const initialUsers = [
     roleName: "Sales TL",
     department: "Sales & Placement",
     team: "Sales Team Beta",
-    manager: "Rudra Patel",
-    managerId: "USR-101",
-    managerEmail: "rudra.p@netbounceplacement.com",
+    manager: "",
+    managerId: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 12,
     createdAt: "14 Jan 2026",
@@ -217,9 +217,9 @@ export const initialUsers = [
     roleName: "Sales TL",
     department: "Sales & Placement",
     team: "Sales Team Gamma",
-    manager: "Rudra Patel",
-    managerId: "USR-101",
-    managerEmail: "rudra.p@netbounceplacement.com",
+    manager: "",
+    managerId: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 7,
     createdAt: "20 Jan 2026",
@@ -233,6 +233,9 @@ export const initialUsers = [
     roleName: "Manager",
     department: "Sales & Placement",
     team: "Sales Leadership",
+    manager: "",
+    managerId: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 6,
     createdAt: "05 Jan 2026",
@@ -246,6 +249,9 @@ export const initialUsers = [
     roleName: "Manager",
     department: "Marketing & Lead Gen",
     team: "Marketing Leadership",
+    manager: "",
+    managerId: "",
+    managerEmail: "",
     status: "Active",
     ticketsCount: 4,
     createdAt: "05 Jan 2026",
@@ -292,14 +298,29 @@ export const saveStoredTickets = (ticketsList) => {
 export const getStoredUsers = () => {
   try {
     const data = localStorage.getItem(USERS_KEY);
-    if (data) return JSON.parse(data);
+    if (data) {
+      const parsed = JSON.parse(data);
+      // Clean up: ONLY Marketing TLs can have a reporting manager. Sales TL, Process Analyst, Manager have no manager.
+      return parsed.map((u) => {
+        if (u.role !== 'marketing_tl') {
+          return { ...u, manager: '', managerId: '', managerEmail: '' };
+        }
+        return u;
+      });
+    }
   } catch (e) {}
   return initialUsers;
 };
 
 export const saveStoredUsers = (usersList) => {
   try {
-    localStorage.setItem(USERS_KEY, JSON.stringify(usersList));
+    const cleaned = usersList.map((u) => {
+      if (u.role !== 'marketing_tl') {
+        return { ...u, manager: '', managerId: '', managerEmail: '' };
+      }
+      return u;
+    });
+    localStorage.setItem(USERS_KEY, JSON.stringify(cleaned));
   } catch (e) {}
 };
 
