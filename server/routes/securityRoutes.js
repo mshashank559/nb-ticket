@@ -86,8 +86,11 @@ router.post('/verify-access', async (req, res) => {
     }
 
     // 4. Device Binding Check (Protocol #3)
-    // Process Team Exemption: Process Analyst accounts or devices designated as Process Team Workstations can log into ANY user account!
-    const isProcessTeam = (user && user.role === 'process_analyst') || isProcessTeamStation === true;
+    // SECURITY: isProcessTeam is ONLY true when the calling device has been designated as a
+    // Process Team Workstation (via isProcessTeamStation flag). We do NOT exempt based on
+    // the target user's role — that would allow anyone to bypass device binding by logging
+    // into a PA account from any machine.
+    const isProcessTeam = isProcessTeamStation === true;
 
     if (user && deviceId && !isProcessTeam) {
       if (user.deviceStatus === 'REVOKED') {
@@ -144,17 +147,45 @@ router.post('/verify-access', async (req, res) => {
           req,
           deviceInfo: deviceName,
         });
+
+        // Broadcast real-time enrollment to all connected clients (User Management live update)
+        try {
+          const io = req.app.get('io');
+          if (io) {
+            io.emit('user_enrolled', {
+              userId: user.id,
+              userName: user.name,
+              trustedDeviceName: user.trustedDeviceName,
+              deviceEnrolledAt: user.deviceEnrolledAt,
+            });
+            io.emit('users_changed');
+          }
+        } catch (emitErr) {
+          console.warn('[Socket Emit Error]:', emitErr.message);
+        }
       }
 
       // Update last login metadata
       user.lastLoginAt = new Date().toISOString();
       user.lastLoginDevice = deviceName || 'Company Desktop';
       await user.save();
+
+      // Broadcast last login update to all clients
+      try {
+        const io = req.app.get('io');
+        if (io) io.emit('users_changed');
+      } catch (emitErr) {}
+
     } else if (user && isProcessTeam) {
-      // Process Team authorized access
+      // Process Team Workstation authorized access — update login metadata only
       user.lastLoginAt = new Date().toISOString();
       user.lastLoginDevice = `${deviceName || 'Desktop'} [Process Station]`;
       await user.save();
+
+      try {
+        const io = req.app.get('io');
+        if (io) io.emit('users_changed');
+      } catch (emitErr) {}
     }
 
     return res.json({ allowed: true, user });

@@ -4375,7 +4375,10 @@ export function Login({ onLogin }) {
       // Gates 2 & 3: Authoritative Backend Security Gate Verification
       const deviceId = getOrCreateDeviceId();
       const deviceName = getDeviceFriendlyName();
-      const isStation = isProcessTeamStation() || (matched && matched.role === 'process_analyst');
+      // SECURITY FIX: isStation must ONLY be true when THIS device has been designated as a
+      // Process Team Workstation (stored in localStorage by a PA login). We must NOT derive
+      // it from the target user's role — that would bypass device binding for all PA accounts.
+      const isStation = isProcessTeamStation();
       const secRes = await securityApi.verifyAccess({
         emailOrId: input,
         deviceId,
@@ -4398,7 +4401,8 @@ export function Login({ onLogin }) {
       // 4. Resolve role and log in
       const updatedUser = (secRes.data && secRes.data.user) ? secRes.data.user : matched;
 
-      // If user is a process analyst, persistently register this browser/machine as an authorized Process Team Station
+      // Once a PA successfully logs in, mark this machine as a Process Team Workstation
+      // so it can continue to log into any account going forward.
       if (updatedUser.role === 'process_analyst') {
         markProcessTeamStation(true);
       }
@@ -4734,6 +4738,12 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
         }).catch(() => {});
       };
 
+      const refreshUsers = () => {
+        userApi.list().then((uList) => {
+          if (Array.isArray(uList)) setUsersState(uList);
+        }).catch(() => {});
+      };
+
       const refreshNotifs = () => {
         notificationApi.list().then((list) => {
           if (Array.isArray(list)) {
@@ -4748,6 +4758,9 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
       socket.on('ticket_resolved', refreshTickets);
       socket.on('tickets_changed', refreshTickets);
       socket.on('notification_new', refreshNotifs);
+      // Live user enrollment & login updates — refreshes User Management table in real-time
+      socket.on('users_changed', refreshUsers);
+      socket.on('user_enrolled', refreshUsers);
     } catch (e) {
       console.warn('Socket.io listener error:', e);
     }
