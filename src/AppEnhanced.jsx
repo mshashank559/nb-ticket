@@ -56,7 +56,17 @@ import {
   KeyRound,
   RotateCcw,
   RefreshCw,
+  Lock,
 } from 'lucide-react';
+
+import { SecurityBlockedModal } from './components/SecurityBlockedModal';
+import {
+  isClientMobile,
+  getOrCreateDeviceId,
+  getDeviceFriendlyName,
+  evaluateClientSchedule,
+  securityApi,
+} from './services/securityService';
 
 import {
   roles,
@@ -1184,7 +1194,7 @@ export function BreachPage({ tickets, onEscalate, onRelax }) {
 }
 
 // User Management Page (As requested for Process Analyst)
-export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser }) {
+export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser, role, currentUser }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -1195,6 +1205,54 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
   const [managerEmail, setManagerEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showNewPwd, setShowNewPwd] = useState(false);
+
+  // Security Controls state
+  const [showAuditModal, setShowAuditModal] = useState(false);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  const [securityNotice, setSecurityNotice] = useState('');
+
+  const loadAuditLogs = async () => {
+    setLoadingAudit(true);
+    const logs = await securityApi.getAuditLogs();
+    setAuditLogs(logs);
+    setLoadingAudit(false);
+  };
+
+  const handleToggleWeekendAccess = async (targetUser) => {
+    const newState = !targetUser.weekendAccess;
+    const res = await securityApi.toggleWeekendAccess({
+      targetUserId: targetUser.id,
+      weekendAccess: newState,
+      performedBy: { name: currentUser || 'Process Analyst', role: role?.id || 'process_analyst' },
+      reason: newState ? 'Authorized weekend access granted' : 'Weekend access revoked',
+    });
+    if (res && res.user) {
+      onEditUser(res.user);
+    } else {
+      onEditUser({ ...targetUser, weekendAccess: newState });
+    }
+    setSecurityNotice(`Weekend access ${newState ? 'granted' : 'revoked'} for ${targetUser.name}.`);
+    setTimeout(() => setSecurityNotice(''), 4000);
+  };
+
+  const handleResetDevice = async (targetUser) => {
+    if (!window.confirm(`Reset trusted device binding for ${targetUser.name}? They will be able to enroll a new machine on their next login.`)) {
+      return;
+    }
+    const res = await securityApi.resetDevice({
+      targetUserId: targetUser.id,
+      performedBy: { name: currentUser || 'Process Analyst', role: role?.id || 'process_analyst' },
+      reason: 'Process Analyst reset trusted device binding',
+    });
+    if (res && res.user) {
+      onEditUser(res.user);
+    } else {
+      onEditUser({ ...targetUser, trustedDeviceId: '', trustedDeviceName: '', deviceStatus: 'ACTIVE' });
+    }
+    setSecurityNotice(`Device enrollment reset for ${targetUser.name}.`);
+    setTimeout(() => setSecurityNotice(''), 4000);
+  };
 
   // Edit state
   const [editUser, setEditUser] = useState(null);
@@ -1324,14 +1382,60 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
         title="User Management"
         subtitle="Manage authorized Team Leads and operations personnel across Marketing, Sales, and Leadership."
         action={
-          <Button
-            icon={UserPlus}
-            onClick={() => setShowAddModal(true)}
-          >
-            Create Team Lead / User
-          </Button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              onClick={() => {
+                loadAuditLogs();
+                setShowAuditModal(true);
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '9px 16px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#334155',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#94a3b8'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
+            >
+              <ShieldAlert size={15} color="#475569" />
+              Security Logs
+            </button>
+            <Button
+              icon={UserPlus}
+              onClick={() => setShowAddModal(true)}
+            >
+              Create Team Lead / User
+            </Button>
+          </div>
         }
       />
+
+      {securityNotice && (
+        <div style={{
+          background: '#eff6ff',
+          border: '1px solid #bfdbfe',
+          color: '#1d4ed8',
+          padding: '10px 16px',
+          borderRadius: '10px',
+          fontSize: '13px',
+          fontWeight: 600,
+          marginBottom: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <CheckCircle2 size={16} />
+          {securityNotice}
+        </div>
+      )}
 
       <div className="metrics-grid">
         <div className="metric-card">
@@ -1391,6 +1495,8 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
                 <th>User</th>
                 <th>Role</th>
                 <th>Department</th>
+                <th>Weekend Access</th>
+                <th>Trusted Device</th>
                 <th>Status</th>
                 <th>Date Added</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -1412,6 +1518,71 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
                     <span className={`role-pill ${u.role}`}>{u.roleName || u.role}</span>
                   </td>
                   <td>{u.department}</td>
+                  <td>
+                    <button
+                      type="button"
+                      title={u.weekendAccess ? "Authorized: Click to Revoke Weekend Access" : "Restricted: Click to Grant Weekend Access"}
+                      onClick={() => handleToggleWeekendAccess(u)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        border: u.weekendAccess ? '1px solid #86efac' : '1px solid #e2e8f0',
+                        background: u.weekendAccess ? '#f0fdf4' : '#f8fafc',
+                        color: u.weekendAccess ? '#15803d' : '#64748b',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <span style={{
+                        width: '6px',
+                        height: '6px',
+                        borderRadius: '50%',
+                        background: u.weekendAccess ? '#22c55e' : '#94a3b8',
+                      }} />
+                      {u.weekendAccess ? 'Authorized' : 'Restricted'}
+                    </button>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        fontSize: '12px',
+                        color: u.trustedDeviceId ? '#0f172a' : '#94a3b8',
+                        fontWeight: u.trustedDeviceId ? 600 : 400,
+                      }}>
+                        {u.trustedDeviceName || (u.trustedDeviceId ? 'Enrolled' : 'Not Enrolled')}
+                      </span>
+                      {u.trustedDeviceId && (
+                        <button
+                          type="button"
+                          title="Reset Device Binding (Allows user to bind a new machine on next login)"
+                          onClick={() => handleResetDevice(u)}
+                          style={{
+                            background: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            padding: '3px 6px',
+                            borderRadius: '4px',
+                            color: '#475569',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                          onMouseOver={(e) => { e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.borderColor = '#fca5a5'; }}
+                          onMouseOut={(e) => { e.currentTarget.style.color = '#475569'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
+                        >
+                          <RotateCcw size={11} />
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </td>
                   <td>
                     <Badge type="status">{u.status || 'Active'}</Badge>
                   </td>
@@ -1535,6 +1706,8 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
               ...(viewUser.role === 'marketing_tl' && viewUser.manager
                 ? [{ label: 'Reporting Manager', value: `${viewUser.manager} (${viewUser.managerEmail || ''})` }]
                 : []),
+              { label: 'Weekend Access', value: viewUser.weekendAccess ? 'Authorized (Active)' : 'Restricted (Default)' },
+              { label: 'Trusted Device', value: viewUser.trustedDeviceName || (viewUser.trustedDeviceId ? 'Enrolled Machine' : 'Not Enrolled') },
               { label: 'Status', value: viewUser.status || 'Active' },
             ].map(({ label, value, mono }) => (
               <div key={label} style={{
@@ -1926,6 +2099,110 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
                 </Button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Security Audit Logs Modal ── */}
+      {showAuditModal && createPortal(
+        <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={() => setShowAuditModal(false)}>
+          <div
+            className="modal-dialog"
+            style={{
+              maxWidth: '720px',
+              width: '90%',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              border: 'none',
+              borderTop: '4px solid #0f172a',
+              borderRadius: '16px',
+              boxShadow: '0 25px 50px -12px rgba(15, 29, 53, 0.35)',
+              padding: '32px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+                  Security Audit Logs
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+                  Permanent audit record of access grants, device resets, and security gate events.
+                </p>
+              </div>
+              <button className="icon-button" onClick={() => setShowAuditModal(false)}><X size={18} /></button>
+            </div>
+
+            {loadingAudit ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontSize: '14px' }}>
+                Loading security audit history...
+              </div>
+            ) : auditLogs.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontSize: '14px' }}>
+                No security events recorded yet.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {auditLogs.map((log) => (
+                  <div
+                    key={log.id || log._id}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '10px',
+                      padding: '12px 16px',
+                      background: '#f8fafc',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          background: log.eventType?.includes('GRANTED') ? '#dcfce7' : (log.eventType?.includes('DENIED') ? '#fee2e2' : '#e0e7ff'),
+                          color: log.eventType?.includes('GRANTED') ? '#15803d' : (log.eventType?.includes('DENIED') ? '#b91c1c' : '#3730a3'),
+                        }}>
+                          {log.eventType?.replace(/_/g, ' ')}
+                        </span>
+                        <strong style={{ fontSize: '13px', color: '#0f172a' }}>
+                          {log.userName || log.userId}
+                        </strong>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                        {log.reason || 'Security gate event'} &bull; By: {log.performedBy?.name || 'System'}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'right' }}>
+                      {log.timestamp ? new Date(log.timestamp).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ marginTop: '24px', textAlign: 'right' }}>
+              <button
+                onClick={() => setShowAuditModal(false)}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#fff',
+                  color: '#334155',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>,
         document.body
@@ -3414,12 +3691,50 @@ export function Login({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [securityBlock, setSecurityBlock] = useState(() => {
+    if (isClientMobile()) {
+      return {
+        blocked: true,
+        reason: 'MOBILE_DEVICE_BLOCKED',
+        title: 'Desktop Access Required',
+        message: 'This software is available only on authorized desktop or laptop devices. Please open this link on your company laptop or PC to access the NetBounce Ticketing System.',
+      };
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (isClientMobile()) {
+        setSecurityBlock({
+          blocked: true,
+          reason: 'MOBILE_DEVICE_BLOCKED',
+          title: 'Desktop Access Required',
+          message: 'This software is available only on authorized desktop or laptop devices. Please open this link on your company laptop or PC to access the NetBounce Ticketing System.',
+        });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email.trim()) return;
     setError('');
     setLoading(true);
+
+    // Gate 1: Strict Mobile Block
+    if (isClientMobile()) {
+      setLoading(false);
+      setSecurityBlock({
+        blocked: true,
+        reason: 'MOBILE_DEVICE_BLOCKED',
+        title: 'Desktop Access Required',
+        message: 'This software is available only on authorized desktop or laptop devices. Please open this link on your company laptop or PC to access the NetBounce Ticketing System.',
+      });
+      return;
+    }
 
     try {
       // 1. Fetch directory users from MongoDB / local storage
@@ -3448,15 +3763,37 @@ export function Login({ onLogin }) {
         return;
       }
 
+      // Gates 2 & 3: Authoritative Backend Security Gate Verification
+      const deviceId = getOrCreateDeviceId();
+      const deviceName = getDeviceFriendlyName();
+      const secRes = await securityApi.verifyAccess({
+        emailOrId: input,
+        deviceId,
+        deviceName,
+      });
+
+      if (!secRes.ok || (secRes.data && secRes.data.allowed === false)) {
+        setLoading(false);
+        const secInfo = secRes.data || {};
+        setSecurityBlock({
+          blocked: true,
+          reason: secInfo.reason || 'OUTSIDE_WORKING_HOURS',
+          title: secInfo.title || 'Access Restricted',
+          message: secInfo.message || 'Access is currently restricted by security policy.',
+        });
+        return;
+      }
+
       // 4. Resolve role and log in
+      const updatedUser = (secRes.data && secRes.data.user) ? secRes.data.user : matched;
       const targetRole =
-        roles.find((r) => r.id === matched.role) ||
-        roles.find((r) => r.name.toLowerCase() === (matched.roleName || '').toLowerCase()) ||
+        roles.find((r) => r.id === updatedUser.role) ||
+        roles.find((r) => r.name.toLowerCase() === (updatedUser.roleName || '').toLowerCase()) ||
         roles[0];
 
       setTimeout(() => {
         setLoading(false);
-        onLogin && onLogin(matched, targetRole);
+        onLogin && onLogin(updatedUser, targetRole);
       }, 300);
     } catch (err) {
       setLoading(false);
@@ -3645,6 +3982,36 @@ export function Login({ onLogin }) {
         </div>,
         document.body
       )}
+
+      {securityBlock && createPortal(
+        <SecurityBlockedModal
+          reason={securityBlock.reason}
+          title={securityBlock.title}
+          message={securityBlock.message}
+          onRetry={async () => {
+            if (isClientMobile()) {
+              return;
+            }
+            const res = await securityApi.verifyAccess({
+              emailOrId: email.trim(),
+              deviceId: getOrCreateDeviceId(),
+              deviceName: getDeviceFriendlyName(),
+            });
+            if (res.ok && res.data && res.data.allowed === true) {
+              setSecurityBlock(null);
+            } else if (res.data) {
+              setSecurityBlock({
+                blocked: true,
+                reason: res.data.reason || securityBlock.reason,
+                title: res.data.title || securityBlock.title,
+                message: res.data.message || securityBlock.message,
+              });
+            }
+          }}
+          onClose={!isClientMobile() ? () => setSecurityBlock(null) : undefined}
+        />,
+        document.body
+      )}
     </div>
   );
 }
@@ -3673,6 +4040,41 @@ export function Shell({ role, currentUser, onSignOut }) {
   const [ticketsState, setTicketsState] = useState(() => getStoredTickets());
   const [usersState, setUsersState] = useState(() => getStoredUsers());
   const [notifsState, setNotifsState] = useState(() => getStoredNotifications());
+  const [shellSecurityBlock, setShellSecurityBlock] = useState(null);
+
+  // Periodic Security Schedule & Device Monitor
+  useEffect(() => {
+    const checkSecurityStatus = () => {
+      if (isClientMobile()) {
+        setShellSecurityBlock({
+          reason: 'MOBILE_DEVICE_BLOCKED',
+          title: 'Desktop Access Required',
+          message: 'This software is available only on authorized desktop or laptop devices. Please open this link on your company laptop or PC to access the NetBounce Ticketing System.',
+        });
+        return;
+      }
+      let authedUser = null;
+      try {
+        const stored = sessionStorage.getItem('authUser');
+        if (stored) authedUser = JSON.parse(stored);
+      } catch (e) {}
+
+      const sched = evaluateClientSchedule(authedUser);
+      if (!sched.allowed) {
+        setShellSecurityBlock({
+          reason: sched.reason,
+          title: sched.title,
+          message: sched.message,
+        });
+      } else {
+        setShellSecurityBlock(null);
+      }
+    };
+
+    checkSecurityStatus();
+    const interval = setInterval(checkSecurityStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Real-time WebSocket synchronization (Socket.io)
   useEffect(() => {
@@ -3900,6 +4302,8 @@ export function Shell({ role, currentUser, onSignOut }) {
               element={
                 <UserManagementPage
                   users={usersState}
+                  role={role}
+                  currentUser={currentUser}
                   onAddUser={handleAddUser}
                   onDeleteUser={handleDeleteUser}
                   onEditUser={handleEditUser}
@@ -3955,6 +4359,16 @@ export function Shell({ role, currentUser, onSignOut }) {
           </Routes>
         </main>
       </div>
+
+      {shellSecurityBlock && createPortal(
+        <SecurityBlockedModal
+          reason={shellSecurityBlock.reason}
+          title={shellSecurityBlock.title}
+          message={shellSecurityBlock.message}
+          onClose={onSignOut}
+        />,
+        document.body
+      )}
     </div>
   );
 }

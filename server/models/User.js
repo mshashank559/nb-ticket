@@ -16,6 +16,14 @@ const UserSchema = new mongoose.Schema(
     status: { type: String, default: 'Active' },
     ticketsCount: { type: Number, default: 0 },
     createdAt: { type: String },
+    // Security Protocol Fields
+    weekendAccess: { type: Boolean, default: false },
+    trustedDeviceId: { type: String, default: '' },
+    trustedDeviceName: { type: String, default: '' },
+    deviceEnrolledAt: { type: String, default: '' },
+    deviceStatus: { type: String, default: 'ACTIVE' },
+    lastLoginAt: { type: String, default: '' },
+    lastLoginDevice: { type: String, default: '' },
   },
   { strict: false, timestamps: true }
 );

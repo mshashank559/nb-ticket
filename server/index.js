@@ -8,6 +8,8 @@ import ticketRoutes from './routes/ticketRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import emailRoutes from './routes/emailRoutes.js';
+import securityRoutes from './routes/securityRoutes.js';
+import { isMobileDevice } from './services/securityEngine.js';
 import { slaScheduler } from './services/slaScheduler.js';
 
 dotenv.config();
@@ -35,11 +37,27 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Global Mobile Device API Gatekeeper (Protocol #1 Server Enforcement)
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health' || req.path.startsWith('/security')) {
+    return next();
+  }
+  if (isMobileDevice(req)) {
+    return res.status(403).json({
+      error: 'MOBILE_DEVICE_BLOCKED',
+      title: 'Desktop Access Required',
+      message: 'This software is available only on authorized desktop or laptop devices. Please open this link on your company laptop or PC to access the NetBounce Ticketing System.',
+    });
+  }
+  next();
+});
+
 // Routes
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/security', securityRoutes);
 
 // Root landing page
 app.get('/', (req, res) => {
