@@ -30,7 +30,7 @@ async function logSecurityEvent({ userId, userName, userRole, eventType, perform
 // Main security gate endpoint called during login and periodic session checks
 router.post('/verify-access', async (req, res) => {
   try {
-    const { emailOrId, deviceId, deviceName } = req.body || {};
+    const { emailOrId, deviceId, deviceName, isProcessTeamStation } = req.body || {};
 
     // 1. Mobile Check Gate
     if (isMobileDevice(req)) {
@@ -64,9 +64,9 @@ router.post('/verify-access', async (req, res) => {
       });
     }
 
-    // If outside hours, check if it's weekend with PA grant
+    // If outside hours, check if it's weekend with PA grant or user is process_analyst
     if (!schedule.allowed) {
-      const hasWeekendGrant = schedule.isWeekend && user && user.weekendAccess === true;
+      const hasWeekendGrant = schedule.isWeekend && user && (user.weekendAccess === true || user.role === 'process_analyst');
       if (!hasWeekendGrant) {
         await logSecurityEvent({
           userId: user ? user.id : emailOrId,
@@ -86,7 +86,10 @@ router.post('/verify-access', async (req, res) => {
     }
 
     // 4. Device Binding Check (Protocol #3)
-    if (user && deviceId) {
+    // Process Team Exemption: Process Analyst accounts or devices designated as Process Team Workstations can log into ANY user account!
+    const isProcessTeam = (user && user.role === 'process_analyst') || isProcessTeamStation === true;
+
+    if (user && deviceId && !isProcessTeam) {
       if (user.deviceStatus === 'REVOKED') {
         await logSecurityEvent({
           userId: user.id,
@@ -146,6 +149,11 @@ router.post('/verify-access', async (req, res) => {
       // Update last login metadata
       user.lastLoginAt = new Date().toISOString();
       user.lastLoginDevice = deviceName || 'Company Desktop';
+      await user.save();
+    } else if (user && isProcessTeam) {
+      // Process Team authorized access
+      user.lastLoginAt = new Date().toISOString();
+      user.lastLoginDevice = `${deviceName || 'Desktop'} [Process Station]`;
       await user.save();
     }
 

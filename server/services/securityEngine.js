@@ -122,7 +122,7 @@ export function evaluateWorkingHours() {
 /**
  * Complete security gate evaluation for a user session or login attempt.
  */
-export function evaluateSecurityAccess({ req, user, deviceId, deviceName }) {
+export function evaluateSecurityAccess({ req, user, deviceId, deviceName, isProcessTeamStation }) {
   // Gate 1: Desktop / Mobile Check
   if (isMobileDevice(req)) {
     return {
@@ -136,8 +136,8 @@ export function evaluateSecurityAccess({ req, user, deviceId, deviceName }) {
   // Gate 2: Schedule & Weekend Check
   const schedule = evaluateWorkingHours();
   if (!schedule.allowed) {
-    // If it is weekend and user has explicit weekend access granted by Process Analyst, allow!
-    if (schedule.isWeekend && user && user.weekendAccess === true) {
+    // Process analysts and users with weekend grant can access on weekend
+    if (schedule.isWeekend && user && (user.weekendAccess === true || user.role === 'process_analyst')) {
       // Allowed via Process Analyst override
     } else {
       return {
@@ -150,7 +150,10 @@ export function evaluateSecurityAccess({ req, user, deviceId, deviceName }) {
   }
 
   // Gate 3: Device Trust / Binding Check (Protocol #3)
-  if (user && deviceId) {
+  // Process team exemption: Process Team members or designated Process Workstations can log into any user account
+  const isProcessTeam = (user && user.role === 'process_analyst') || isProcessTeamStation === true;
+
+  if (!isProcessTeam && user && deviceId) {
     if (user.deviceStatus === 'REVOKED') {
       return {
         allowed: false,

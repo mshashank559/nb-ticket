@@ -2,6 +2,31 @@
 // Enforces Desktop-only, Shift timing, Weekend restriction, and Trusted Device Enrollment
 
 const DEVICE_ID_KEY = 'netbounce_device_token_v1';
+const PROCESS_STATION_KEY = 'netbounce_is_process_station';
+
+/**
+ * Checks whether this browser has been verified as a Process Team Workstation.
+ */
+export function isProcessTeamStation() {
+  try {
+    return localStorage.getItem(PROCESS_STATION_KEY) === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Designates or un-designates this browser as a Process Team Workstation.
+ */
+export function markProcessTeamStation(enabled = true) {
+  try {
+    if (enabled) {
+      localStorage.setItem(PROCESS_STATION_KEY, 'true');
+    } else {
+      localStorage.removeItem(PROCESS_STATION_KEY);
+    }
+  } catch (e) {}
+}
 
 /**
  * Gets or creates a persistent unique client device identifier.
@@ -154,12 +179,13 @@ export function evaluateClientSchedule(user) {
  * API client methods for security endpoints.
  */
 export const securityApi = {
-  verifyAccess: async ({ emailOrId, deviceId, deviceName }) => {
+  verifyAccess: async ({ emailOrId, deviceId, deviceName, isProcessTeamStation: forceStation }) => {
     try {
+      const isStation = forceStation !== undefined ? forceStation : isProcessTeamStation();
       const res = await fetch('/api/security/verify-access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailOrId, deviceId, deviceName }),
+        body: JSON.stringify({ emailOrId, deviceId, deviceName, isProcessTeamStation: isStation }),
       });
       const data = await res.json();
       return { status: res.status, ok: res.ok, data };

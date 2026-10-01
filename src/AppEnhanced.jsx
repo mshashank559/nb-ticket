@@ -66,6 +66,8 @@ import {
   getDeviceFriendlyName,
   evaluateClientSchedule,
   securityApi,
+  isProcessTeamStation,
+  markProcessTeamStation,
 } from './services/securityService';
 
 import {
@@ -1194,7 +1196,7 @@ export function BreachPage({ tickets, onEscalate, onRelax }) {
 }
 
 // User Management Page (As requested for Process Analyst)
-export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser, role, currentUser }) {
+export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser, onSwitchUser, role, currentUser }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -1211,6 +1213,16 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
   const [auditLogs, setAuditLogs] = useState([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [securityNotice, setSecurityNotice] = useState('');
+
+  const handleLoginAsUser = (targetUser) => {
+    const targetRole =
+      roles.find((r) => r.id === targetUser.role) ||
+      roles.find((r) => r.name.toLowerCase() === (targetUser.roleName || '').toLowerCase()) ||
+      roles[0];
+    if (onSwitchUser) {
+      onSwitchUser(targetUser, targetRole);
+    }
+  };
 
   const loadAuditLogs = async () => {
     setLoadingAudit(true);
@@ -1611,6 +1623,27 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
                         onClick={() => { setViewUser(u); setShowViewPwd(false); }}
                       >
                         <Eye size={14} />
+                      </button>
+                      {/* Login As User (Process Team Access) */}
+                      <button
+                        title={`Login As ${u.name} (Process Team Access)`}
+                        style={{
+                          color: '#059669',
+                          background: '#ecfdf5',
+                          border: '1px solid #a7f3d0',
+                          padding: '6px 8px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseOver={(e) => { e.currentTarget.style.background = '#d1fae5'; }}
+                        onMouseOut={(e) => { e.currentTarget.style.background = '#ecfdf5'; }}
+                        onClick={() => handleLoginAsUser(u)}
+                      >
+                        <KeyRound size={14} />
                       </button>
                       {/* Edit Button */}
                       <button
@@ -3766,10 +3799,12 @@ export function Login({ onLogin }) {
       // Gates 2 & 3: Authoritative Backend Security Gate Verification
       const deviceId = getOrCreateDeviceId();
       const deviceName = getDeviceFriendlyName();
+      const isStation = isProcessTeamStation() || (matched && matched.role === 'process_analyst');
       const secRes = await securityApi.verifyAccess({
         emailOrId: input,
         deviceId,
         deviceName,
+        isProcessTeamStation: isStation,
       });
 
       if (!secRes.ok || (secRes.data && secRes.data.allowed === false)) {
@@ -3786,6 +3821,12 @@ export function Login({ onLogin }) {
 
       // 4. Resolve role and log in
       const updatedUser = (secRes.data && secRes.data.user) ? secRes.data.user : matched;
+
+      // If user is a process analyst, persistently register this browser/machine as an authorized Process Team Station
+      if (updatedUser.role === 'process_analyst') {
+        markProcessTeamStation(true);
+      }
+
       const targetRole =
         roles.find((r) => r.id === updatedUser.role) ||
         roles.find((r) => r.name.toLowerCase() === (updatedUser.roleName || '').toLowerCase()) ||
@@ -3846,6 +3887,27 @@ export function Login({ onLogin }) {
 
       <div className="login-card">
         <h1 className="login-heading">Login</h1>
+        {isProcessTeamStation() && (
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            width: '100%',
+            padding: '6px 12px',
+            borderRadius: '20px',
+            background: 'rgba(59, 130, 246, 0.2)',
+            border: '1px solid rgba(147, 197, 253, 0.4)',
+            color: '#bfdbfe',
+            fontSize: '11px',
+            fontWeight: 600,
+            marginBottom: '16px',
+            textAlign: 'center',
+          }}>
+            <ShieldCheck size={13} color="#60a5fa" />
+            Process Team Workstation &bull; Internal Multi-User Access
+          </div>
+        )}
         <form className="login-form" onSubmit={handleSubmit}>
           {error && (
             <div style={{
@@ -4033,7 +4095,7 @@ export function NotFound() {
   );
 }
 
-export function Shell({ role, currentUser, onSignOut }) {
+export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
   const location = useLocation();
 
   // Persistent tickets & users state
@@ -4307,6 +4369,7 @@ export function Shell({ role, currentUser, onSignOut }) {
                   onAddUser={handleAddUser}
                   onDeleteUser={handleDeleteUser}
                   onEditUser={handleEditUser}
+                  onSwitchUser={onSwitchUser}
                 />
               }
             />
@@ -4398,6 +4461,14 @@ export default function AppEnhanced() {
     setIsAuthenticated(true);
   };
 
+  const handleSwitchUser = (user, userRole) => {
+    sessionStorage.setItem('demoRole', userRole.id);
+    sessionStorage.setItem('demoUser', user.name);
+    sessionStorage.setItem('authUser', JSON.stringify(user));
+    setRole(userRole);
+    setCurrentUser(user.name);
+  };
+
   const handleSignOut = () => {
     sessionStorage.removeItem('isAuthenticated');
     sessionStorage.removeItem('demoRole');
@@ -4427,6 +4498,7 @@ export default function AppEnhanced() {
                 role={role}
                 currentUser={currentUser}
                 onSignOut={handleSignOut}
+                onSwitchUser={handleSwitchUser}
               />
             ) : (
               <Navigate to="/login" />
