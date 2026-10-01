@@ -2725,6 +2725,7 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
   const [showReopenModal, setShowReopenModal] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const isPA = role.id === 'process_analyst';
+  const isAssigned = Boolean(ticket && ticket.assignee && ticket.assignee !== 'Unassigned' && String(ticket.assignee).trim() !== '');
 
   const usersList = getStoredUsers();
   const availableTLs = usersList.filter(
@@ -4145,7 +4146,12 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
       const envApiUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
       const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
       const socketServer = (isHttps && envApiUrl.startsWith('http://')) ? undefined : (envApiUrl || undefined);
-      socket = io(socketServer, { transports: ['websocket', 'polling'] });
+      socket = io(socketServer, {
+        transports: ['polling'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        timeout: 10000,
+      });
 
       const refreshTickets = () => {
         ticketApi.list().then((list) => {
