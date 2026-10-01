@@ -724,16 +724,24 @@ export function Dashboard({ role, currentUser, tickets, onAssign, onEscalate, on
       />
 
       <div className="metrics-grid">
-        {metrics.map(([label, value, Icon, hint]) => (
-          <div className="metric-card" data-testid={`metric-${id(label)}`} key={label}>
-            <div className="metric-icon tone-blue">
-              <Icon size={18} />
+        {metrics.map(([label, value, Icon, hint]) => {
+          const kpiKey = id(label);
+          return (
+            <div
+              className={`metric-card kpi-${kpiKey}`}
+              data-kpi={kpiKey}
+              data-testid={`metric-${kpiKey}`}
+              key={label}
+            >
+              <div className="metric-icon">
+                <Icon size={18} />
+              </div>
+              <div className="metric-label">{label}</div>
+              <strong>{value}</strong>
+              <span className="metric-hint">{hint}</span>
             </div>
-            <div className="metric-label">{label}</div>
-            <strong>{value}</strong>
-            <span className="metric-hint">{hint}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="dashboard-grid">

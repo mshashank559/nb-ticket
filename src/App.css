@@ -340,3 +340,124 @@
 .btn-secondary { background: white; color: #53647c; border: 1px solid var(--line); }
 .btn-secondary:hover { border-color: #b9cbe4; background: #f8fbff; }
 
+/* ==========================================================================
+   MODERN FLOATING KPI CARDS WITH 4PX SEMANTIC LEFT ACCENT BORDERS
+   ========================================================================== */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.metric-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-left-width: 4px !important;
+  border-left-style: solid !important;
+  border-left-color: #3B82F6 !important; /* fallback blue */
+  border-radius: 12px !important;
+  padding: 18px 18px 16px !important;
+  min-height: 132px !important;
+  box-shadow: 0 4px 18px -2px rgba(15, 29, 53, 0.05), 0 2px 6px -1px rgba(15, 29, 53, 0.03) !important;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease !important;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-card:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 12px 28px -4px rgba(15, 29, 53, 0.1), 0 4px 10px -2px rgba(15, 29, 53, 0.04) !important;
+}
+
+/* Specific Semantic Left Accent Border Color Mapping */
+/* 1. Total Tickets: Left border #3B82F6 (Blue) */
+.metric-card.kpi-total-tickets,
+.metric-card[data-kpi="total-tickets"],
+.metric-card[data-kpi="marketing-tickets"],
+.metric-card[data-kpi="sales-tickets"],
+.metric-card[data-kpi="total-volume"] {
+  border-left-color: #3B82F6 !important;
+}
+
+/* 2. Awaiting Assignment: Left border #6366F1 (Indigo) */
+.metric-card.kpi-awaiting-assignment,
+.metric-card[data-kpi="awaiting-assignment"] {
+  border-left-color: #6366F1 !important;
+}
+
+/* 3. Active in SLA: Left border #0EA5E9 (Violet/Sky) */
+.metric-card.kpi-active-in-sla,
+.metric-card[data-kpi="active-in-sla"],
+.metric-card[data-kpi="in-progress"],
+.metric-card[data-kpi="open-/-in-progress"] {
+  border-left-color: #0EA5E9 !important;
+}
+
+/* 4. SLA Breaches: Left border #EF4444 (Red, matching notification badge) */
+.metric-card.kpi-sla-breaches,
+.metric-card[data-kpi="sla-breaches"],
+.metric-card[data-kpi="total-breaches"],
+.metric-card[data-kpi="breaches"] {
+  border-left-color: #EF4444 !important;
+}
+
+/* 5. Escalated: Left border #F59E0B (Amber/Orange) */
+.metric-card.kpi-escalated,
+.metric-card[data-kpi="escalated"],
+.metric-card[data-kpi="escalated-queue"] {
+  border-left-color: #F59E0B !important;
+}
+
+/* Supplementary Queues */
+.metric-card.kpi-resolved,
+.metric-card[data-kpi="resolved"] {
+  border-left-color: #10B981 !important;
+}
+
+.metric-card.kpi-total-team,
+.metric-card[data-kpi="total-team"] {
+  border-left-color: #6366F1 !important;
+}
+
+/* Cohesive Semantic Icon Backgrounds & Colors */
+.metric-card.kpi-total-tickets .metric-icon,
+.metric-card[data-kpi="total-tickets"] .metric-icon,
+.metric-card[data-kpi="marketing-tickets"] .metric-icon,
+.metric-card[data-kpi="sales-tickets"] .metric-icon,
+.metric-card[data-kpi="total-volume"] .metric-icon {
+  background: #eff6ff !important;
+  color: #3B82F6 !important;
+}
+
+.metric-card.kpi-awaiting-assignment .metric-icon,
+.metric-card[data-kpi="awaiting-assignment"] .metric-icon {
+  background: #eef2ff !important;
+  color: #6366F1 !important;
+}
+
+.metric-card.kpi-active-in-sla .metric-icon,
+.metric-card[data-kpi="active-in-sla"] .metric-icon,
+.metric-card[data-kpi="in-progress"] .metric-icon,
+.metric-card[data-kpi="open-/-in-progress"] .metric-icon {
+  background: #f0f9ff !important;
+  color: #0EA5E9 !important;
+}
+
+.metric-card.kpi-sla-breaches .metric-icon,
+.metric-card[data-kpi="sla-breaches"] .metric-icon,
+.metric-card[data-kpi="total-breaches"] .metric-icon,
+.metric-card[data-kpi="breaches"] .metric-icon {
+  background: #fef2f2 !important;
+  color: #EF4444 !important;
+}
+
+.metric-card.kpi-escalated .metric-icon,
+.metric-card[data-kpi="escalated"] .metric-icon,
+.metric-card[data-kpi="escalated-queue"] .metric-icon {
+  background: #fffbeb !important;
+  color: #F59E0B !important;
+}
+
+
