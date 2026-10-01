@@ -553,7 +553,13 @@ export const ticketApi = {
       await fetch(`/api/tickets/${ticketId}/assign`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignee: assigneeUser.name, paName, assigneeRole: roleId }),
+        body: JSON.stringify({
+          assignee: assigneeUser.name,
+          assigneeId: assigneeUser.id || '',
+          assigneeEmail: assigneeUser.email || '',
+          paName,
+          assigneeRole: roleId,
+        }),
       });
     } catch (e) {
       if (targetTicket) syncToBackend('PUT', `/${ticketId}`, targetTicket);
@@ -926,6 +932,27 @@ export const userApi = {
       }
     } catch (e) {}
     return getStoredUsers();
+  },
+
+  getActiveSalesTLs: async () => {
+    try {
+      const res = await fetch('/api/users/sales-tls/active');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) return data;
+      }
+    } catch (e) {}
+    try {
+      const resAll = await fetch('/api/users?role=sales_tl&status=Active');
+      if (resAll.ok) {
+        const data = await resAll.json();
+        if (Array.isArray(data)) return data;
+      }
+    } catch (e) {}
+    const list = getStoredUsers();
+    return list.filter(
+      (u) => (u.role === 'sales_tl' || u.role === 'SALES_TL') && String(u.status || '').toLowerCase() === 'active'
+    );
   },
 
   create: async (user) => {

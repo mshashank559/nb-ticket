@@ -2457,6 +2457,277 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
   );
 }
 
+// Searchable Dynamic Sales TL Selection Dropdown Component
+function SalesTLDropdown({ value, onChange, required }) {
+  const [salesTls, setSalesTls] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const dropdownRef = useRef(null);
+
+  const fetchSalesTLs = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await userApi.getActiveSalesTLs();
+      setSalesTls(Array.isArray(list) ? list : []);
+    } catch (err) {
+      console.error('Failed to load Sales TLs:', err);
+      setError('Unable to load Sales TLs. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSalesTLs();
+  }, []);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedUser = salesTls.find((u) => u.id === value);
+
+  const filtered = salesTls.filter((u) => {
+    const q = search.toLowerCase();
+    return (
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
+      {/* Hidden input to support standard HTML5 required validation */}
+      <input
+        type="text"
+        tabIndex={-1}
+        value={value || ''}
+        required={required}
+        onChange={() => {}}
+        style={{
+          opacity: 0,
+          position: 'absolute',
+          pointerEvents: 'none',
+          height: 0,
+          width: 0,
+          bottom: 0,
+        }}
+      />
+
+      {/* Dropdown Trigger Button */}
+      <button
+        type="button"
+        onClick={() => !loading && setIsOpen((prev) => !prev)}
+        disabled={loading}
+        style={{
+          width: '100%',
+          minHeight: '42px',
+          padding: '8px 14px',
+          background: '#ffffff',
+          border: isOpen ? '1px solid #3b82f6' : '1px solid #cbd5e1',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: loading ? 'wait' : 'pointer',
+          boxShadow: isOpen ? '0 0 0 3px rgba(59, 130, 246, 0.15)' : 'none',
+          transition: 'all 0.15s ease',
+          textAlign: 'left',
+        }}
+      >
+        {loading ? (
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '13px' }}>
+            <RefreshCw size={14} className="spin" />
+            Loading Sales TLs...
+          </span>
+        ) : selectedUser ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+            <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13px' }}>
+              {selectedUser.name}
+            </span>
+            <span style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              background: '#e0f2fe',
+              color: '#0369a1',
+              padding: '1px 6px',
+              borderRadius: '4px',
+            }}>
+              Sales TL
+            </span>
+            <span style={{ fontSize: '12px', color: '#64748b', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+              ({selectedUser.email})
+            </span>
+          </div>
+        ) : (
+          <span style={{ color: '#94a3b8', fontSize: '13px' }}>
+            Select Sales TL...
+          </span>
+        )}
+        <ChevronDown
+          size={16}
+          style={{
+            color: '#64748b',
+            transform: isOpen ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.2s ease',
+            flexShrink: 0,
+            marginLeft: '8px',
+          }}
+        />
+      </button>
+
+      {/* Floating Menu */}
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            background: '#ffffff',
+            border: '1px solid #cbd5e1',
+            borderRadius: '10px',
+            boxShadow: '0 12px 28px -4px rgba(15, 23, 42, 0.18)',
+            zIndex: 1000,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Search Box */}
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Search size={14} style={{ position: 'absolute', left: '10px', color: '#94a3b8' }} />
+              <input
+                type="text"
+                autoFocus
+                placeholder="Search Sales TL..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '6px 10px 6px 30px',
+                  fontSize: '12px',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  outline: 'none',
+                  background: '#ffffff',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+
+          {/* List Content */}
+          <div style={{ maxHeight: '220px', overflowY: 'auto', padding: '4px' }}>
+            {error ? (
+              <div style={{ padding: '14px 12px', textAlign: 'center' }}>
+                <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#dc2626' }}>
+                  {error}
+                </p>
+                <button
+                  type="button"
+                  onClick={fetchSalesTLs}
+                  style={{
+                    background: '#f1f5f9',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#334155',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div style={{ padding: '16px 12px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+                {salesTls.length === 0 ? 'No active Sales TLs available.' : 'No matching Sales TL found.'}
+              </div>
+            ) : (
+              filtered.map((tl) => {
+                const isSelected = tl.id === value;
+                return (
+                  <div
+                    key={tl.id}
+                    onClick={() => {
+                      onChange(tl);
+                      setIsOpen(false);
+                      setSearch('');
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: isSelected ? '#f0fdf4' : 'transparent',
+                      transition: 'background 0.1s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) e.currentTarget.style.background = '#f8fafc';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div
+                        style={{
+                          width: '14px',
+                          height: '14px',
+                          borderRadius: '50%',
+                          border: isSelected ? '4px solid #16a34a' : '1.5px solid #cbd5e1',
+                          background: '#ffffff',
+                          flexShrink: 0,
+                          transition: 'all 0.15s ease',
+                        }}
+                      />
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                            {tl.name}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              background: '#e0f2fe',
+                              color: '#0369a1',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                            }}
+                          >
+                            Sales TL
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
+                          {tl.email}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Create Ticket Component - strictly adhering to Section 4 (Marketing) vs Section 8 (Sales)
 export function CreateTicket({ role, currentUser, onCreateTicket }) {
   const navigate = useNavigate();
@@ -2474,6 +2745,10 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
   const [candidateName, setCandidateName] = useState('');
   const [candidateEmail, setCandidateEmail] = useState('');
   const [candidatePhone, setCandidatePhone] = useState('');
+
+  // Dynamic Sales TL assignment fields (for Marketing TL form)
+  const [selectedSalesTl, setSelectedSalesTl] = useState(null);
+  const [salesTlEmail, setSalesTlEmail] = useState('');
 
   // Marketing specific fields: MUST BE CUSTOM TEXT INPUTS
   const [seniorRecruiter, setSeniorRecruiter] = useState('');
@@ -2556,6 +2831,13 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
     e.preventDefault();
 
     const isSales = formType === 'sales';
+
+    // Validation for Marketing TL -> Sales ticket: must select a Sales TL
+    if (!isSales && !selectedSalesTl?.id) {
+      alert('Please select an active Sales TL to assign this ticket.');
+      return;
+    }
+
     const newTicketPayload = {
       title: isSales ? mainTopic : customIssueTitle,
       candidate: candidateName,
@@ -2571,8 +2853,15 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
       subCategory: isSales ? subTopic : customIssueTitle,
       seniorRecruiter: isSales ? seniorRecruiter : '',
       recruiter: isSales ? recruiter : '',
-      assignee: isSales ? (recruiter || 'Unassigned') : 'Unassigned',
-      assigneeRole: isSales && recruiter ? 'marketing_tl' : '',
+      // Dynamic Sales TL fields (User Management is source of truth)
+      targetSalesTlId: isSales ? '' : (selectedSalesTl?.id || ''),
+      targetSalesTlName: isSales ? '' : (selectedSalesTl?.name || ''),
+      targetSalesTlEmail: isSales ? '' : (selectedSalesTl?.email || ''),
+      salesTlEmail: isSales ? '' : (selectedSalesTl?.email || ''),
+      assignee: isSales ? (recruiter || 'Unassigned') : (selectedSalesTl?.name || 'Unassigned'),
+      assigneeId: isSales ? '' : (selectedSalesTl?.id || ''),
+      assigneeEmail: isSales ? '' : (selectedSalesTl?.email || ''),
+      assigneeRole: isSales ? (recruiter ? 'marketing_tl' : '') : (selectedSalesTl ? 'sales_tl' : ''),
       salesRep: isSales ? salesRep : '',
       salesPoc: isSales ? (marketingTlEmail || salesPoc) : '',
       marketingTlEmail: isSales ? (marketingTlEmail || salesPoc) : '',
@@ -2711,10 +3000,45 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
           </div>
         )}
 
+        {/* Sales TL Assignment Context (Exclusively for Marketing TL -> Sales tickets) */}
+        {formType === 'marketing' && (
+          <div className="form-section">
+            <div className="form-section-heading">
+              <span className="section-number">02</span>
+              <div>
+                <h2>Sales Team Assignment Context</h2>
+                <p>Assign an active Sales Team Lead from the database to handle this placement issue.</p>
+              </div>
+            </div>
+            <div className="form-grid">
+              <label className="span-2">
+                <span>Assign to Sales TL <span style={{ color: 'var(--red)' }}>*</span></span>
+                <SalesTLDropdown
+                  value={selectedSalesTl?.id || ''}
+                  onChange={(tl) => {
+                    setSelectedSalesTl(tl);
+                    setSalesTlEmail(tl?.email || '');
+                  }}
+                  required
+                />
+              </label>
+              <label className="span-2">
+                <span>Sales TL Mail ID</span>
+                <input
+                  readOnly
+                  placeholder="Auto-filled from database user profile"
+                  value={salesTlEmail}
+                  style={{ background: '#f8fafc', cursor: 'not-allowed', color: '#475569' }}
+                />
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* Issue Details */}
         <div className="form-section">
           <div className="form-section-heading">
-            <span className="section-number">{formType === 'sales' ? '03' : '02'}</span>
+            <span className="section-number">03</span>
             <div>
               <h2>{formType === 'sales' ? 'Structured Issue Selection' : 'Custom Issue & Concern'}</h2>
               <p>
@@ -2811,7 +3135,7 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
         {/* Attachment / Photo Upload */}
         <div className="form-section">
           <div className="form-section-heading">
-            <span className="section-number">{formType === 'sales' ? '04' : '03'}</span>
+            <span className="section-number">04</span>
             <div>
               <h2>Attachments & Photos <small>Optional</small></h2>
               <p>Upload screenshots, PDFs, Excel sheets, audio logs, or identity documents.</p>
@@ -2940,10 +3264,25 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
   const isPA = role.id === 'process_analyst';
   const isAssigned = Boolean(ticket && ticket.assignee && ticket.assignee !== 'Unassigned' && String(ticket.assignee).trim() !== '');
 
-  const usersList = getStoredUsers();
+  const [usersList, setUsersList] = useState(() => getStoredUsers());
+  useEffect(() => {
+    userApi.list().then((list) => {
+      if (Array.isArray(list) && list.length > 0) setUsersList(list);
+    }).catch(() => {});
+  }, []);
+
   const availableTLs = usersList.filter(
-    (u) => u.role === 'marketing_tl' || u.role === 'sales_tl'
+    (u) => (u.role === 'marketing_tl' || u.role === 'sales_tl') && String(u.status || '').toLowerCase() === 'active'
   );
+
+  // If ticket had an intended Sales TL specified by creator, pre-fill it for PA assignment
+  useEffect(() => {
+    if (ticket && !selectedTL) {
+      if (ticket.targetSalesTlName) {
+        setSelectedTL(ticket.targetSalesTlName);
+      }
+    }
+  }, [ticket]);
 
   if (!ticket) {
     return (
@@ -2984,7 +3323,9 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
     if (!selectedTL) return;
     const targetUser = availableTLs.find((u) => u.name === selectedTL) || {
       name: selectedTL,
-      role: 'marketing_tl',
+      id: ticket.targetSalesTlId || '',
+      email: ticket.targetSalesTlEmail || '',
+      role: 'sales_tl',
     };
     onAssign(ticket.id, targetUser, currentUser);
   };

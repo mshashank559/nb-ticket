@@ -178,15 +178,57 @@ async function ensureManagerMapping() {
   }
 }
 
-// GET /api/users - List all users (Auto-seed if collection empty)
-router.get('/', async (req, res) => {
+// GET /api/users/sales-tls/active - Dedicated endpoint to query ACTIVE Sales TLs directly from database
+router.get('/sales-tls/active', async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
-      return res.json(initialSeedUsers);
+      const activeSeed = initialSeedUsers.filter(
+        (u) => (u.role === 'sales_tl' || u.role === 'SALES_TL') && String(u.status || '').toLowerCase() === 'active'
+      );
+      return res.json(activeSeed);
     }
     await ensureManagerMapping();
-    let users = await User.find().sort({ createdAt: 1 });
-    if (users.length === 0) {
+    const salesTls = await User.find({
+      role: { $in: ['sales_tl', 'SALES_TL'] },
+      status: { $regex: /^active$/i },
+    }).sort({ name: 1 });
+
+    res.json(salesTls);
+  } catch (error) {
+    console.error('Error fetching active Sales TLs:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/users - List all users (Auto-seed if collection empty, supports ?role= & ?status=)
+router.get('/', async (req, res) => {
+  try {
+    const queryFilter = {};
+    if (req.query.role) {
+      const roleVal = req.query.role.toLowerCase();
+      queryFilter.$or = [
+        { role: roleVal },
+        { role: roleVal.toUpperCase() },
+        { roleName: { $regex: new RegExp(`^${req.query.role}$`, 'i') } },
+      ];
+    }
+    if (req.query.status) {
+      queryFilter.status = { $regex: new RegExp(`^${req.query.status}$`, 'i') };
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      let filtered = initialSeedUsers;
+      if (req.query.role) {
+        filtered = filtered.filter(u => u.role === req.query.role.toLowerCase());
+      }
+      if (req.query.status) {
+        filtered = filtered.filter(u => String(u.status || '').toLowerCase() === req.query.status.toLowerCase());
+      }
+      return res.json(filtered);
+    }
+    await ensureManagerMapping();
+    let users = await User.find(queryFilter).sort({ createdAt: 1 });
+    if (users.length === 0 && Object.keys(queryFilter).length === 0) {
       try {
         await User.insertMany(initialSeedUsers, { ordered: false });
         console.log(`[Users Seeded] Authorized directory users seeded into MongoDB.`);

@@ -241,10 +241,46 @@ router.post('/', async (req, res) => {
 
     let targetAssignee = req.body.assignee && req.body.assignee !== 'Unassigned' ? req.body.assignee : (req.body.recruiter || 'Unassigned');
     let targetAssigneeRole = req.body.assigneeRole || '';
+    let targetAssigneeId = req.body.assigneeId || '';
+    let targetAssigneeEmail = req.body.assigneeEmail || '';
+
+    let targetSalesTlId = req.body.targetSalesTlId || req.body.selectedSalesTlId || '';
+    let targetSalesTlName = req.body.targetSalesTlName || '';
+    let targetSalesTlEmail = req.body.targetSalesTlEmail || '';
+
+    // If Sales TL selection was provided (from Marketing TL or direct assignment):
+    if (targetSalesTlId) {
+      const stlUser = await User.findOne({
+        id: targetSalesTlId,
+        role: { $in: ['sales_tl', 'SALES_TL'] },
+        status: { $regex: /^active$/i },
+      });
+      if (!stlUser) {
+        return res.status(400).json({
+          error: 'Invalid Sales TL assignment. Selected user does not exist, is not active, or does not have Sales TL role.'
+        });
+      }
+      targetSalesTlId = stlUser.id;
+      targetSalesTlName = stlUser.name;
+      targetSalesTlEmail = stlUser.email;
+
+      // In the Marketing -> Sales workflow, if assigned directly or intended as assignee:
+      if (targetAssignee === 'Unassigned' || targetAssignee === stlUser.name) {
+        targetAssignee = stlUser.name;
+        targetAssigneeId = stlUser.id;
+        targetAssigneeEmail = stlUser.email;
+        targetAssigneeRole = 'sales_tl';
+      }
+    }
+
     if (targetAssignee && targetAssignee !== 'Unassigned' && !targetAssigneeRole) {
       try {
         const u = await User.findOne({ name: targetAssignee });
-        if (u) targetAssigneeRole = u.role;
+        if (u) {
+          targetAssigneeRole = u.role;
+          if (!targetAssigneeId) targetAssigneeId = u.id;
+          if (!targetAssigneeEmail) targetAssigneeEmail = u.email;
+        }
       } catch (e) {}
       if (!targetAssigneeRole) {
         targetAssigneeRole = (req.body.team === 'Sales' || req.body.creatorRole === 'sales_tl') ? 'marketing_tl' : 'sales_tl';
@@ -260,7 +296,12 @@ router.post('/', async (req, res) => {
       id: nextId,
       status: req.body.status || (isDirectlyAssigned ? 'In Progress' : 'New'),
       assignee: targetAssignee,
+      assigneeId: targetAssigneeId,
+      assigneeEmail: targetAssigneeEmail,
       assigneeRole: targetAssigneeRole,
+      targetSalesTlId,
+      targetSalesTlName,
+      targetSalesTlEmail,
       targetTeam: req.body.targetTeam || (targetAssigneeRole === 'marketing_tl' ? 'Marketing' : targetAssigneeRole === 'sales_tl' ? 'Sales' : req.body.team || 'Marketing'),
       assignedAt: isDirectlyAssigned ? (req.body.assignedAt || now) : null,
       assignedBy: isDirectlyAssigned ? (req.body.assignedBy || req.body.createdBy || 'Originating Team Lead') : '',
@@ -306,16 +347,33 @@ router.post('/', async (req, res) => {
 // PATCH /api/tickets/:id/assign - Assign to Team Lead and start 24h SLA
 router.patch('/:id/assign', async (req, res) => {
   try {
-    const { assignee, paName, assigneeRole: explicitRole } = req.body;
+    const { assignee, paName, assigneeRole: explicitRole, assigneeId } = req.body;
     let resolvedRole = explicitRole;
-    if (!resolvedRole && assignee) {
-      try {
-        const u = await User.findOne({ name: assignee });
-        if (u) resolvedRole = u.role;
-      } catch (e) {}
-      if (!resolvedRole) {
-        resolvedRole = 'marketing_tl';
-      }
+    let resolvedId = assigneeId || '';
+    let resolvedName = assignee;
+    let resolvedEmail = '';
+
+    // Strictly validate against User Management database
+    let validatedUser = null;
+    if (resolvedId) {
+      validatedUser = await User.findOne({
+        id: resolvedId,
+        status: { $regex: /^active$/i },
+      });
+    } else if (assignee) {
+      validatedUser = await User.findOne({
+        name: { $regex: new RegExp(`^${assignee.trim()}$`, 'i') },
+        status: { $regex: /^active$/i },
+      });
+    }
+
+    if (validatedUser) {
+      resolvedId = validatedUser.id;
+      resolvedName = validatedUser.name;
+      resolvedEmail = validatedUser.email;
+      resolvedRole = validatedUser.role;
+    } else if (!resolvedRole && assignee) {
+      resolvedRole = 'sales_tl';
     }
 
     const now = new Date();
@@ -323,7 +381,7 @@ router.patch('/:id/assign', async (req, res) => {
 
     const newTimelineItem = {
       title: 'Assigned to Team Lead',
-      detail: `Assigned to ${assignee || 'Team Lead'} (${resolvedRole === 'marketing_tl' ? 'Marketing TL' : 'Sales TL'}) by ${paName || 'Process Analyst'}. 24-hour SLA officially started.`,
+      detail: `Assigned to ${resolvedName || 'Team Lead'} (${resolvedRole === 'marketing_tl' ? 'Marketing TL' : 'Sales TL'}) by ${paName || 'Process Analyst'}. 24-hour SLA officially started.`,
       time: 'Just now',
       type: 'assignment',
     };
@@ -333,7 +391,7 @@ router.patch('/:id/assign', async (req, res) => {
       name: paName || 'Process Analyst',
       role: 'Process Analyst',
       time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      text: `Assigned ticket to ${assignee}. 24-hour SLA countdown starts now.`,
+      text: `Assigned ticket to ${resolvedName}. 24-hour SLA countdown starts now.`,
       mine: false,
     };
 
@@ -341,7 +399,9 @@ router.patch('/:id/assign', async (req, res) => {
       { id: req.params.id },
       {
         $set: {
-          assignee: assignee,
+          assignee: resolvedName,
+          assigneeId: resolvedId,
+          assigneeEmail: resolvedEmail,
           assigneeRole: resolvedRole,
           targetTeam: resolvedRole === 'marketing_tl' ? 'Marketing' : 'Sales',
           assignedBy: paName || 'Process Analyst',
@@ -363,7 +423,32 @@ router.patch('/:id/assign', async (req, res) => {
     );
 
     if (!updated) return res.status(404).json({ error: 'Ticket not found' });
-    console.log(`[Ticket Assigned] ID: ${updated.id} to ${updated.assignee} (${updated.assigneeRole})`);
+    console.log(`[Ticket Assigned] ID: ${updated.id} to ${updated.assignee} (${updated.assigneeRole}) [UserId: ${updated.assigneeId}]`);
+
+    // Audit Log Creation
+    try {
+      const auditEntry = new AuditLog({
+        id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        ticketId: updated.id,
+        eventType: 'TICKET_ASSIGNED',
+        actor: paName || 'Process Analyst',
+        recipient: resolvedEmail || updated.assignee,
+        subject: `Ticket ${updated.id} assigned to ${resolvedName} (${resolvedRole === 'marketing_tl' ? 'Marketing TL' : 'Sales TL'}) by ${paName || 'Process Analyst'}.`,
+        deliveryStatus: 'sent',
+        metadata: {
+          ticketId: updated.id,
+          assigneeUserId: resolvedId,
+          assigneeName: resolvedName,
+          assigneeRole: resolvedRole,
+          actorUserId: req.body.actorUserId || paName || 'Process Analyst',
+          actorRole: req.body.actorRole || 'process_analyst',
+          timestamp: now.toISOString(),
+        },
+      });
+      await auditEntry.save();
+    } catch (auditErr) {
+      console.error('[Ticket Assign Audit Log Error]:', auditErr.message);
+    }
 
     // Emit live WebSocket update so all connected users see it immediately at the top
     try {

@@ -109,15 +109,33 @@ class EmailService {
     }
 
     // ── 3. SPECIFIC ASSIGNED TL — ONLY the one person assigned to this ticket ──
-    // Priority: stored marketingTlEmail > assignee name DB lookup
+    // Priority: assigneeId DB lookup > stored assigneeEmail > stored marketingTlEmail > assignee name DB lookup
     // We do NOT look up all users with assigneeRole — only the exact assigned person.
     const assigneeEvents = ['Assigned', 'Reminder', 'Re-Opened', 'Resolved', 'Closed', 'Escalated', 'Extension', 'Breach', 'Reply', 'New'];
     if (assigneeEvents.includes(eventType) || eventType === 'Reply') {
-      // If the specific email was stored at ticket-creation time, use it directly
+      // 3a. Resolve by stable assigneeId or targetSalesTlId directly from User Management database
+      const targetUserId = ticket.assigneeId || ticket.targetSalesTlId;
+      if (targetUserId) {
+        try {
+          const u = await User.findOne({ id: targetUserId });
+          if (u?.email && u.email.includes('@')) {
+            recipients.add(u.email);
+          }
+        } catch (e) {}
+      }
+      // 3b. If assigneeEmail is stored directly on ticket
+      if (ticket.assigneeEmail && ticket.assigneeEmail.includes('@')) {
+        recipients.add(ticket.assigneeEmail);
+      }
+      // 3c. If targetSalesTlEmail was stored at ticket-creation time
+      if (ticket.targetSalesTlEmail && ticket.targetSalesTlEmail.includes('@')) {
+        recipients.add(ticket.targetSalesTlEmail);
+      }
+      // 3d. If marketingTlEmail was stored at ticket-creation time (Sales form)
       if (ticket.marketingTlEmail && ticket.marketingTlEmail.includes('@')) {
         recipients.add(ticket.marketingTlEmail);
       }
-      // Additionally resolve by the specific assignee NAME (exact match, not role-broad)
+      // 3e. Additionally resolve by the specific assignee NAME (exact match, not role-broad)
       if (ticket.assignee && ticket.assignee !== 'Unassigned') {
         const assigneeEmails = await this.resolveUserEmails({
           name: { $regex: new RegExp(`^${ticket.assignee.trim()}$`, 'i') },
