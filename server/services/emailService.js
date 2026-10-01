@@ -141,10 +141,32 @@ class EmailService {
       }
     }
 
-    // ── 6. MANAGERS — only on escalation ──
+    // ── 6. MANAGERS — strictly Assignee's specific manager on escalation ──
     if (eventType === 'Escalated') {
-      const mgrEmails = await this.resolveUserEmails({ role: 'manager' });
-      mgrEmails.forEach((em) => recipients.add(em));
+      if (extra.managerEmail && extra.managerEmail.includes('@')) {
+        recipients.add(extra.managerEmail);
+      } else {
+        let resolvedMgrEmail = null;
+        if (ticket.assignee && ticket.assignee !== 'Unassigned') {
+          const assigneeUser = await User.findOne({
+            name: { $regex: new RegExp(`^${ticket.assignee.trim()}$`, 'i') },
+          });
+          if (assigneeUser?.managerEmail) {
+            resolvedMgrEmail = assigneeUser.managerEmail;
+          } else if (assigneeUser?.manager) {
+            const mgr = await User.findOne({
+              name: { $regex: new RegExp(`^${assigneeUser.manager.trim()}$`, 'i') },
+            });
+            if (mgr?.email) resolvedMgrEmail = mgr.email;
+          }
+        }
+        if (resolvedMgrEmail) {
+          recipients.add(resolvedMgrEmail);
+        } else {
+          const mgrEmails = await this.resolveUserEmails({ role: 'manager' });
+          if (mgrEmails.length > 0) recipients.add(mgrEmails[0]);
+        }
+      }
     }
 
     // ── 7. Remove the acting user so they don't email themselves ──

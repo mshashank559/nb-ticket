@@ -113,6 +113,7 @@ export const initialUsers = [
     role: "process_analyst",
     roleName: "Process Analyst & Admin",
     department: "Quality & Operations",
+    team: "Central Governance",
     status: "Active",
     ticketsCount: 0,
     createdAt: "28 Sept 2026",
@@ -125,6 +126,7 @@ export const initialUsers = [
     role: "process_analyst",
     roleName: "Process Analyst",
     department: "Quality & Operations",
+    team: "SLA Governance",
     status: "Active",
     ticketsCount: 28,
     createdAt: "10 Jan 2026",
@@ -137,45 +139,90 @@ export const initialUsers = [
     role: "process_analyst",
     roleName: "Process Analyst",
     department: "Quality & Operations",
+    team: "Operations Quality",
     status: "Active",
     ticketsCount: 5,
     createdAt: "15 Jan 2026",
   },
   {
-    id: "USR-104",
-    name: "Nilesh Gurjar",
-    email: "nilesh.g@netbounceplacement.com",
-    password: "Sales@123",
+    id: "USR-103",
+    name: "Mukesh Choudhary",
+    email: "mukesh.c@netbounceplacement.com",
+    password: "TL@123",
     role: "sales_tl",
     roleName: "Sales TL",
     department: "Sales & Placement",
+    team: "Sales Team Alpha",
+    manager: "Rudra Patel",
+    managerId: "USR-101",
+    managerEmail: "rudra.p@netbounceplacement.com",
     status: "Active",
-    ticketsCount: 18,
-    createdAt: "15 Jan 2026",
+    ticketsCount: 9,
+    createdAt: "01 Feb 2026",
   },
   {
     id: "USR-105",
     name: "Shivam Barot",
-    email: "shivam.b@netbounceplacemenet.com",
+    email: "shivam.s@netbounceplacement.com",
     password: "Sales@123",
     role: "marketing_tl",
     roleName: "Marketing TL",
     department: "Marketing & Lead Gen",
+    team: "Marketing Team North",
+    manager: "Shilp Patel",
+    managerId: "USR-106",
+    managerEmail: "shilp.p@netbounceplacement.com",
     status: "Active",
     ticketsCount: 14,
     createdAt: "12 Jan 2026",
   },
   {
-    id: "USR-103",
-    name: "Mukesh Chaudhary",
-    email: "mukesh.chaudhary@netbounceplacement.com",
-    password: "TL@123",
+    id: "USR-109",
+    name: "Preet A.",
+    email: "preet.a@netbounceplacement.com",
+    password: "Sales@123",
+    role: "sales_tl",
+    roleName: "Sales TL",
+    department: "Sales & Placement",
+    team: "Sales Team Beta",
+    manager: "Rudra Patel",
+    managerId: "USR-101",
+    managerEmail: "rudra.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 12,
+    createdAt: "14 Jan 2026",
+  },
+  {
+    id: "USR-104",
+    name: "Nilesh Gurjar",
+    email: "nilesh.k@netbounceplacement.com",
+    password: "Sales@123",
     role: "marketing_tl",
     roleName: "Marketing TL",
     department: "Marketing & Lead Gen",
+    team: "Marketing Team South",
+    manager: "Shilp Patel",
+    managerId: "USR-106",
+    managerEmail: "shilp.p@netbounceplacement.com",
     status: "Active",
-    ticketsCount: 9,
-    createdAt: "01 Feb 2026",
+    ticketsCount: 18,
+    createdAt: "15 Jan 2026",
+  },
+  {
+    id: "USR-110",
+    name: "Ved Prakash",
+    email: "ved.p@netbounceplacement.com",
+    password: "Sales@123",
+    role: "sales_tl",
+    roleName: "Sales TL",
+    department: "Sales & Placement",
+    team: "Sales Team Gamma",
+    manager: "Rudra Patel",
+    managerId: "USR-101",
+    managerEmail: "rudra.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 7,
+    createdAt: "20 Jan 2026",
   },
   {
     id: "USR-101",
@@ -184,7 +231,8 @@ export const initialUsers = [
     password: "MM@123",
     role: "manager",
     roleName: "Manager",
-    department: "Executive Leadership",
+    department: "Sales & Placement",
+    team: "Sales Leadership",
     status: "Active",
     ticketsCount: 6,
     createdAt: "05 Jan 2026",
@@ -196,7 +244,8 @@ export const initialUsers = [
     password: "MM@123",
     role: "manager",
     roleName: "Manager",
-    department: "Executive Leadership",
+    department: "Marketing & Lead Gen",
+    team: "Marketing Leadership",
     status: "Active",
     ticketsCount: 4,
     createdAt: "05 Jan 2026",
@@ -326,7 +375,16 @@ const syncToBackend = async (method, path = '', body = null) => {
 export const ticketApi = {
   list: async () => {
     try {
-      const res = await fetch(apiUrl('/api/tickets'));
+      const authUserStr = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('authUser') : null;
+      const authUser = authUserStr ? JSON.parse(authUserStr) : null;
+      const demoRole = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('demoRole') : null;
+      const demoUser = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('demoUser') : null;
+      const headers = {};
+      if (demoRole) headers['x-user-role'] = demoRole;
+      if (demoUser) headers['x-user-name'] = demoUser;
+      if (authUser?.email) headers['x-user-email'] = authUser.email;
+
+      const res = await fetch(apiUrl('/api/tickets'), { headers });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -340,7 +398,16 @@ export const ticketApi = {
 
   get: async (id) => {
     try {
-      const res = await fetch(apiUrl(`/api/tickets/${id}`));
+      const authUserStr = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('authUser') : null;
+      const authUser = authUserStr ? JSON.parse(authUserStr) : null;
+      const demoRole = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('demoRole') : null;
+      const demoUser = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('demoUser') : null;
+      const headers = {};
+      if (demoRole) headers['x-user-role'] = demoRole;
+      if (demoUser) headers['x-user-name'] = demoUser;
+      if (authUser?.email) headers['x-user-email'] = authUser.email;
+
+      const res = await fetch(apiUrl(`/api/tickets/${id}`), { headers });
       if (res.ok) return await res.json();
     } catch (e) {}
     return getStoredTickets().find((t) => t.id === id);
@@ -655,13 +722,42 @@ export const ticketApi = {
     return targetTicket;
   },
 
-  // Reopen Ticket (for Marketing TL / Sales TL / Process Analyst)
+  // Reopen Ticket (7-day window strictly enforced)
   reopen: async (ticketId, userName, userRole = "Team Lead", reason = "Resolution not satisfactory.") => {
     const list = getStoredTickets();
+    const existing = list.find((t) => t.id === ticketId);
+    if (existing && existing.status === 'Closed') {
+      const closedTime = existing.closedAt ? new Date(existing.closedAt).getTime() : 0;
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      if (closedTime && Date.now() - closedTime > SEVEN_DAYS_MS) {
+        throw new Error('Reopen window expired. Tickets can only be reopened within 7 days of closure.');
+      }
+    }
+
     const now = new Date();
     const timeStr = `Today · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     const deadline = new Date(Date.now() + 24 * 3600 * 1000);
     const deadlineStr = `Tomorrow · ${deadline.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    // Sync reopen to backend using dedicated endpoint first
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}/reopen`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName, userRole, reason }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.error) {
+          throw new Error(errData.error);
+        }
+      }
+    } catch (e) {
+      if (e.message?.includes('expired') || e.message?.includes('closure')) {
+        throw e;
+      }
+      console.warn('[reopen] Backend sync warning:', e.message);
+    }
 
     const updated = list.map((t) => {
       if (t.id === ticketId) {
@@ -704,17 +800,6 @@ export const ticketApi = {
 
     const targetTicket = updated.find((t) => t.id === ticketId);
     saveStoredTickets(updated);
-
-    // Sync reopen to backend using dedicated endpoint
-    try {
-      await fetch(`/api/tickets/${ticketId}/reopen`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userName, userRole, reason }),
-      });
-    } catch (e) {
-      console.warn('[reopen] Backend sync failed, local state updated', e);
-    }
 
     // Create system notification for all relevant users
     try {

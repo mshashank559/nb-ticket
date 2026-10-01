@@ -258,35 +258,40 @@ export const emailTemplates = {
     const ticketTitle = ticket.title || '';
     const escalatedTo = ticket.escalatedTo || extra.escalatedTo || 'Manager';
     const team = ticket.team || extra.team || 'Department';
+    const creator = ticket.createdBy || ticket.creatorName || extra.raisedBy || 'Ticket Creator';
     const assignedTo = ticket.assignee || extra.assignedTo || 'Unassigned';
-    const slaDeadline = extra.slaDeadline || ticket.slaDeadline || 'Breached';
+    const slaDeadline = extra.slaDeadline || ticket.slaDeadline || '24 hours';
+    const breachTime = ticket.breachedAt || extra.breachTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const actionUrl = `${APP_URL}/tickets/${ticketId}`;
 
-    const subject = `⚠ Ticket #${ticketId} Escalated – SLA Breach / Priority Attention Required`;
-    const text = `Dear ${escalatedTo},\n\nTicket #${ticketId} ("${ticketTitle}") has breached its SLA (24 hours) or requires higher-level attention. It has been escalated to you.\n\n* Originating Team: ${team}\n* Assigned To (previous): ${assignedTo}\n* SLA Deadline (missed): ${slaDeadline}\n\nKindly review and act on priority.\n\nOpen Ticket: ${actionUrl}`;
+    const subject = `[${ticketId}] Escalated — SLA Breach`;
+    const text = `Dear ${escalatedTo},\n\nTicket #${ticketId} ("${ticketTitle}") has breached its 24-hour turnaround SLA and has been escalated to you for managerial intervention.\n\n* Ticket ID: #${ticketId}\n* Creator: ${creator}\n* Assignee: ${assignedTo}\n* Manager: ${escalatedTo}\n* SLA Deadline: ${slaDeadline}\n* Breach Time: ${breachTime}\n\nKindly review and action on priority.\n\nOpen Ticket: ${actionUrl}`;
 
     const bodyContent = `
-      <h1 style="color: #ef4444;">⚠ Ticket Escalated to Governance</h1>
-      <p>Dear <strong>${escalatedTo}</strong>, Ticket <strong>#${ticketId}</strong> ("${ticketTitle}") has breached its SLA (24 hours) or requires higher-level attention. It has been escalated to you.</p>
+      <h1 style="color: #ef4444;">⚠ Ticket Escalated — SLA Breach</h1>
+      <p>Dear <strong>${escalatedTo}</strong>, Ticket <strong>#${ticketId}</strong> ("${ticketTitle}") has breached its 24-hour turnaround SLA and has been escalated to you for managerial intervention.</p>
       <div class="meta-box" style="border-left: 4px solid #ef4444;">
         <div class="meta-row"><span class="meta-label">Ticket ID:</span><span class="meta-value">#${ticketId}</span></div>
+        <div class="meta-row"><span class="meta-label">Creator:</span><span class="meta-value">${creator}</span></div>
+        <div class="meta-row"><span class="meta-label">Assignee:</span><span class="meta-value">${assignedTo}</span></div>
+        <div class="meta-row"><span class="meta-label">Manager:</span><span class="meta-value">${escalatedTo}</span></div>
         <div class="meta-row"><span class="meta-label">Originating Team:</span><span class="meta-value">${team}</span></div>
-        <div class="meta-row"><span class="meta-label">Previous Assignee:</span><span class="meta-value">${assignedTo}</span></div>
-        <div class="meta-row"><span class="meta-label">SLA Deadline (missed):</span><span class="meta-value" style="color: #ef4444;">${slaDeadline}</span></div>
+        <div class="meta-row"><span class="meta-label">SLA Deadline:</span><span class="meta-value">${slaDeadline}</span></div>
+        <div class="meta-row"><span class="meta-label">Breach Time:</span><span class="meta-value" style="color: #ef4444;">${breachTime}</span></div>
         <div class="meta-row"><span class="meta-label">Status:</span><span class="meta-value" style="color: #ef4444;">Escalated / Breached</span></div>
       </div>
-      <p>Kindly review and act on priority.</p>
+      <p>Kindly review and take necessary action.</p>
     `;
 
-    const webNotice = `🚨 Ticket #${ticketId} escalated to ${escalatedTo} — SLA breached.`;
+    const webNotice = `🚨 [${ticketId}] Escalated — SLA Breach. Escalated to ${escalatedTo}.`;
 
     return {
       subject,
       text,
-      html: wrapHtml(subject, `Ticket #${ticketId} escalated to ${escalatedTo}`, bodyContent, actionUrl),
+      html: wrapHtml(subject, `[${ticketId}] Escalated to ${escalatedTo}`, bodyContent, actionUrl),
       webNotice,
       notificationTitle: `Ticket Escalated`,
-      notificationDetail: `Ticket #${ticketId} escalated to ${escalatedTo} — SLA breached.`,
+      notificationDetail: `[${ticketId}] Escalated to ${escalatedTo} — SLA breached.`,
       notificationType: 'Escalated',
     };
   },

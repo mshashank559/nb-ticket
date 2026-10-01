@@ -2,9 +2,91 @@ import express from 'express';
 import mongoose from 'mongoose';
 import { Ticket } from '../models/Ticket.js';
 import { User } from '../models/User.js';
+import { AuditLog } from '../models/AuditLog.js';
 import { emailService } from '../services/emailService.js';
 
 const router = express.Router();
+
+// Helper to check if requester is authorized to view a ticket
+const isUserAuthorizedForTicket = (ticket, userCtx, allUsers = []) => {
+  if (!ticket || !userCtx) return true;
+  const role = userCtx.role || '';
+  const name = (userCtx.name || '').trim().toLowerCase();
+  const email = (userCtx.email || '').trim().toLowerCase();
+
+  if (!role && !name && !email) return true;
+  if (role === 'process_analyst' || role === 'admin') return true;
+
+  const userDoc = allUsers.find((u) =>
+    (name && u.name?.trim().toLowerCase() === name) ||
+    (email && u.email?.trim().toLowerCase() === email)
+  );
+
+  const effectiveRole = role || userDoc?.role || '';
+  const effectiveEmail = email || userDoc?.email?.toLowerCase() || '';
+
+  const tCreator = (ticket.createdBy || ticket.creatorName || '').trim().toLowerCase();
+  const tAssignee = (ticket.assignee || '').trim().toLowerCase();
+  const tRecruiter = (ticket.recruiter || '').trim().toLowerCase();
+  const tSalesRep = (ticket.salesRep || '').trim().toLowerCase();
+  const tSalesPoc = (ticket.salesPoc || '').trim().toLowerCase();
+  const tMktEmail = (ticket.marketingTlEmail || '').trim().toLowerCase();
+
+  const isDirectParticipant =
+    (name && (
+      tCreator === name ||
+      tAssignee === name ||
+      tRecruiter === name ||
+      tSalesRep === name ||
+      tSalesPoc === name
+    )) ||
+    (effectiveEmail && (
+      tSalesPoc === effectiveEmail ||
+      tMktEmail === effectiveEmail ||
+      tAssignee === effectiveEmail
+    ));
+
+  if (effectiveRole === 'sales_tl' || effectiveRole === 'marketing_tl') {
+    return isDirectParticipant;
+  }
+
+  if (effectiveRole === 'manager') {
+    const escalatedTo = (ticket.escalatedTo || '').toLowerCase();
+    if (escalatedTo && name && escalatedTo.includes(name)) return true;
+    if (isDirectParticipant) return true;
+
+    // Reporting hierarchy check: does the creator or assignee report to this manager?
+    const reportees = allUsers.filter((u) => {
+      const mName = (u.manager || '').toLowerCase();
+      const mEmail = (u.managerEmail || '').toLowerCase();
+      return (
+        (name && mName === name) ||
+        (effectiveEmail && mEmail === effectiveEmail) ||
+        (userDoc?.id && u.managerId === userDoc.id)
+      );
+    });
+
+    if (reportees.length > 0) {
+      const reporteeNames = new Set(reportees.map((u) => (u.name || '').toLowerCase()).filter(Boolean));
+      const reporteeEmails = new Set(reportees.map((u) => (u.email || '').toLowerCase()).filter(Boolean));
+      return (
+        reporteeNames.has(tCreator) ||
+        reporteeNames.has(tAssignee) ||
+        reporteeNames.has(tRecruiter) ||
+        reporteeNames.has(tSalesRep) ||
+        reporteeEmails.has(tSalesPoc) ||
+        reporteeEmails.has(tMktEmail)
+      );
+    }
+
+    const userDept = (userDoc?.department || '').toLowerCase();
+    const ticketTeam = (ticket.team || ticket.targetTeam || '').toLowerCase();
+    if (userDept && ticketTeam && userDept.includes(ticketTeam)) return true;
+    return true;
+  }
+
+  return true;
+};
 
 // Helper to format remaining time or deadline
 const calcSLARemaining = (deadline) => {
@@ -16,15 +98,27 @@ const calcSLARemaining = (deadline) => {
   return `${hours}h ${mins.toString().padStart(2, '0')}m`;
 };
 
-// GET /api/tickets - List all tickets (newest activity / created on top)
+// GET /api/tickets - List all tickets (filtered by authorization if user context present)
 router.get('/', async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
       return res.json([]);
     }
     const tickets = await Ticket.find().sort({ updatedAt: -1, createdAt: -1 });
+
+    const reqUser = {
+      name: req.headers['x-user-name'] || req.query.userName || '',
+      role: req.headers['x-user-role'] || req.query.userRole || '',
+      email: req.headers['x-user-email'] || req.query.userEmail || '',
+    };
+
+    let allUsers = [];
+    if (reqUser.role || reqUser.name || reqUser.email) {
+      allUsers = await User.find();
+    }
+
     // Recalculate dynamic SLA string & status
-    const mapped = tickets.map(t => {
+    const mapped = tickets.map((t) => {
       const doc = t.toObject();
       if (doc.status !== 'Resolved' && doc.status !== 'Closed' && doc.slaDeadline) {
         const diff = new Date(doc.slaDeadline).getTime() - Date.now();
@@ -42,6 +136,12 @@ router.get('/', async (req, res) => {
       }
       return doc;
     });
+
+    if (reqUser.role || reqUser.name || reqUser.email) {
+      const authorized = mapped.filter((t) => isUserAuthorizedForTicket(t, reqUser, allUsers));
+      return res.json(authorized);
+    }
+
     res.json(mapped);
   } catch (error) {
     console.error('Error fetching tickets:', error);
@@ -82,6 +182,20 @@ router.get('/:id', async (req, res) => {
     if (!ticket) {
       return res.status(404).json({ error: 'Ticket not found' });
     }
+
+    const reqUser = {
+      name: req.headers['x-user-name'] || req.query.userName || '',
+      role: req.headers['x-user-role'] || req.query.userRole || '',
+      email: req.headers['x-user-email'] || req.query.userEmail || '',
+    };
+
+    if (reqUser.role || reqUser.name || reqUser.email) {
+      const allUsers = await User.find();
+      if (!isUserAuthorizedForTicket(ticket, reqUser, allUsers)) {
+        return res.status(403).json({ error: 'Forbidden: You are not authorized to view this ticket.' });
+      }
+    }
+
     res.json(ticket);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -333,10 +447,46 @@ router.patch('/:id/resolve', async (req, res) => {
   }
 });
 
-// PATCH /api/tickets/:id/reopen - Reopen Ticket by Sales TL, Marketing TL, or Process Analyst
+// PATCH /api/tickets/:id/reopen - Reopen Ticket by Sales TL, Marketing TL, or Process Analyst (7-day window enforced)
 router.patch('/:id/reopen', async (req, res) => {
   try {
     const { userName, userRole, reason } = req.body;
+
+    const existingTicket = await Ticket.findOne({ id: req.params.id });
+    if (!existingTicket) return res.status(404).json({ error: 'Ticket not found' });
+
+    // 7-DAY REOPEN WINDOW CHECK
+    if (existingTicket.status === 'Closed') {
+      const closedTime = existingTicket.closedAt ? new Date(existingTicket.closedAt).getTime() : 0;
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      if (closedTime && Date.now() - closedTime > SEVEN_DAYS_MS) {
+        // Write audit log entry
+        try {
+          const audit = new AuditLog({
+            id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            ticketId: existingTicket.id,
+            eventType: 'REOPEN_REJECTED',
+            actor: userName || 'User',
+            recipient: userName || 'User',
+            subject: `Reopen attempt rejected for #${existingTicket.id}`,
+            metadata: {
+              reason: 'Reopen attempt rejected — 7-day reopen window expired.',
+              closedAt: existingTicket.closedAt,
+              attemptedAt: new Date(),
+            },
+          });
+          await audit.save();
+        } catch (e) {
+          console.error('[AuditLog Error]:', e.message);
+        }
+
+        return res.status(403).json({
+          error: 'Reopen window expired. Tickets can only be reopened within 7 days of closure.',
+          code: 'REOPEN_WINDOW_EXPIRED',
+        });
+      }
+    }
+
     const now = new Date();
     const deadline = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
@@ -398,23 +548,53 @@ router.patch('/:id/reopen', async (req, res) => {
   }
 });
 
-// PATCH /api/tickets/:id/escalate - Escalate Ticket
+// PATCH /api/tickets/:id/escalate - Escalate Ticket to Assignee's specific manager
 router.patch('/:id/escalate', async (req, res) => {
   try {
     const { userName } = req.body;
+    const existingTicket = await Ticket.findOne({ id: req.params.id });
+    if (!existingTicket) return res.status(404).json({ error: 'Ticket not found' });
+
+    // Dynamically resolve Assignee's specific manager from User Management
+    let targetManager = 'Manager';
+    let targetManagerEmail = null;
+
+    if (existingTicket.assignee && existingTicket.assignee !== 'Unassigned') {
+      const assigneeUser = await User.findOne({
+        name: { $regex: new RegExp(`^${existingTicket.assignee.trim()}$`, 'i') },
+      });
+      if (assigneeUser) {
+        if (assigneeUser.manager) targetManager = assigneeUser.manager;
+        if (assigneeUser.managerEmail) targetManagerEmail = assigneeUser.managerEmail;
+      }
+    }
+
+    if (!targetManagerEmail) {
+      const mgrUser = await User.findOne({
+        $or: [
+          { name: { $regex: new RegExp(`^${targetManager.trim()}$`, 'i') } },
+          { role: 'manager' },
+        ],
+      });
+      if (mgrUser) {
+        targetManager = mgrUser.name;
+        targetManagerEmail = mgrUser.email;
+      }
+    }
+
     const updated = await Ticket.findOneAndUpdate(
       { id: req.params.id },
       {
         $set: {
           status: 'Escalated',
-          escalatedTo: 'Kavita Rao (Manager)',
+          escalatedTo: `${targetManager} (Manager)`,
           escalatedAt: new Date(),
         },
         $push: {
           timeline: {
             $each: [{
               title: 'Escalated to Executive Governance',
-              detail: `Ticket breached SLA limit and was escalated to Manager by ${userName || 'Process Analyst'}.`,
+              detail: `Ticket breached SLA limit and was escalated to ${targetManager} (Manager) by ${userName || 'Process Analyst'}.`,
               time: 'Just now',
               type: 'escalation',
             }],
@@ -426,10 +606,11 @@ router.patch('/:id/escalate', async (req, res) => {
     );
     if (!updated) return res.status(404).json({ error: 'Ticket not found' });
 
-    // Send Escalated Notification & Email from Central Support Email
+    // Send Escalated Notification & Email strictly to Assignee's Manager + PA + Creator
     emailService
       .sendTicketNotification('escalated', updated, {
-        escalatedTo: updated.escalatedTo,
+        escalatedTo: `${targetManager} (Manager)`,
+        managerEmail: targetManagerEmail,
         team: updated.team,
         assignedTo: updated.assignee,
       })

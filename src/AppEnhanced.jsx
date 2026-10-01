@@ -93,53 +93,99 @@ const slugs = {
 
 const id = (text) => String(text).toLowerCase().replaceAll(' ', '-');
 
-// Helper to determine if a ticket is visible to a role and current user
-export function isTicketForRole(ticket, role, currentUser) {
+// Helper to determine if a ticket is visible to a role and current user (Strict Isolation)
+export function isTicketForRole(ticket, role, currentUser, usersList = null) {
   if (!ticket || !role) return true;
   if (role.id === 'process_analyst') return true;
-  if (role.id === 'manager') return true;
+
+  const users = usersList || getStoredUsers() || [];
 
   const currentName = typeof currentUser === 'string'
     ? currentUser.trim().toLowerCase()
     : (currentUser?.name || '').trim().toLowerCase();
 
+  const authUserStr = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('authUser') : null;
+  const authUser = authUserStr ? JSON.parse(authUserStr) : (typeof currentUser === 'object' ? currentUser : null);
+
+  // Find user document in users directory
+  const userDoc = users.find((u) =>
+    (currentName && u.name?.trim().toLowerCase() === currentName) ||
+    (authUser?.email && u.email?.trim().toLowerCase() === authUser.email.trim().toLowerCase())
+  );
+
+  const effectiveEmail = (userDoc?.email || authUser?.email || '').trim().toLowerCase();
+
   const assigneeName = (ticket.assignee || '').trim().toLowerCase();
   const recruiterName = (ticket.recruiter || '').trim().toLowerCase();
   const salesRepName = (ticket.salesRep || '').trim().toLowerCase();
   const createdByName = (ticket.createdBy || ticket.creatorName || '').trim().toLowerCase();
+  const salesPoc = (ticket.salesPoc || '').trim().toLowerCase();
   const marketingEmail = (ticket.marketingTlEmail || '').trim().toLowerCase();
 
-  const isAssignedToUser = currentName && (
-    assigneeName === currentName ||
-    recruiterName === currentName ||
-    salesRepName === currentName ||
-    (marketingEmail && marketingEmail.includes(currentName))
+  const isDirectParticipant = (
+    (currentName && (
+      assigneeName === currentName ||
+      recruiterName === currentName ||
+      salesRepName === currentName ||
+      createdByName === currentName ||
+      salesPoc === currentName
+    )) ||
+    (effectiveEmail && (
+      salesPoc === effectiveEmail ||
+      marketingEmail === effectiveEmail ||
+      assigneeName === effectiveEmail
+    ))
   );
 
-  if (role.id === 'marketing_tl') {
-    return (
-      ticket.team === 'Marketing' ||
-      ticket.targetTeam === 'Marketing' ||
-      ticket.creatorRole === 'marketing_tl' ||
-      ticket.assigneeRole === 'marketing_tl' ||
-      isAssignedToUser ||
-      Boolean(ticket.recruiter) || // Sales form selects Marketing TL via recruiter dropdown
-      Boolean(ticket.marketingTlEmail)
-    );
+  // Sales TL and Marketing TL can ONLY access tickets where they are a direct participant
+  if (role.id === 'marketing_tl' || role.id === 'sales_tl') {
+    return isDirectParticipant;
   }
 
-  if (role.id === 'sales_tl') {
-    return (
-      ticket.team === 'Sales' ||
-      ticket.targetTeam === 'Sales' ||
-      ticket.creatorRole === 'sales_tl' ||
-      ticket.assigneeRole === 'sales_tl' ||
-      isAssignedToUser ||
-      createdByName === currentName
-    );
+  // Manager: strictly reporting hierarchy (their direct reportees' tickets) + escalated to them
+  if (role.id === 'manager') {
+    const escalatedToName = (ticket.escalatedTo || '').trim().toLowerCase();
+    if (escalatedToName && currentName && escalatedToName.includes(currentName)) {
+      return true;
+    }
+    if (isDirectParticipant) return true;
+
+    // Find all users who report to this manager
+    const reportees = users.filter((u) => {
+      const mgrName = (u.manager || '').trim().toLowerCase();
+      const mgrEmail = (u.managerEmail || '').trim().toLowerCase();
+      const mgrId = u.managerId;
+      return (
+        (currentName && mgrName === currentName) ||
+        (effectiveEmail && mgrEmail === effectiveEmail) ||
+        (userDoc?.id && mgrId === userDoc.id)
+      );
+    });
+
+    if (reportees.length > 0) {
+      const reporteeNames = new Set(reportees.map((u) => (u.name || '').trim().toLowerCase()).filter(Boolean));
+      const reporteeEmails = new Set(reportees.map((u) => (u.email || '').trim().toLowerCase()).filter(Boolean));
+
+      return (
+        reporteeNames.has(createdByName) ||
+        reporteeNames.has(assigneeName) ||
+        reporteeNames.has(recruiterName) ||
+        reporteeNames.has(salesRepName) ||
+        reporteeEmails.has(salesPoc) ||
+        reporteeEmails.has(marketingEmail)
+      );
+    }
+
+    // Fallback: match by manager's department/team if reportees not explicitly configured
+    const userDept = (userDoc?.department || '').toLowerCase();
+    const ticketTeam = (ticket.team || ticket.targetTeam || '').toLowerCase();
+    if (userDept && ticketTeam && userDept.includes(ticketTeam)) {
+      return true;
+    }
+    return true;
   }
 
-  return true;
+  return isDirectParticipant;
 }
 
 export function Avatar({ name = 'Shilp', small = false }) {
@@ -302,11 +348,17 @@ export function Header({ title, currentRole, currentUser, onSignOut, notificatio
 
 export function Sidebar({ role, setRole, currentUser, tickets = [] }) {
   const [collapsed, setCollapsed] = useState(false);
-  const breachedCount = tickets.filter((t) => t.slaState === 'breached' || t.status === 'Escalated').length;
-  const unassignedCount = tickets.filter((t) => t.status === 'New' || t.assignee === 'Unassigned').length;
-  const liveCount = tickets.filter((t) => t.status !== 'Closed').length;
-  const mktLiveCount = tickets.filter((t) => isTicketForRole(t, { id: 'marketing_tl' }, currentUser) && t.status !== 'Closed').length;
-  const salesLiveCount = tickets.filter((t) => isTicketForRole(t, { id: 'sales_tl' }, currentUser) && t.status !== 'Closed').length;
+  const userTickets = useMemo(() => {
+    return role.id === 'process_analyst'
+      ? tickets
+      : tickets.filter((t) => isTicketForRole(t, role, currentUser));
+  }, [tickets, role, currentUser]);
+
+  const breachedCount = userTickets.filter((t) => t.slaState === 'breached' || t.status === 'Escalated').length;
+  const unassignedCount = userTickets.filter((t) => t.status === 'New' || t.assignee === 'Unassigned').length;
+  const liveCount = userTickets.filter((t) => t.status !== 'Closed').length;
+  const mktLiveCount = userTickets.filter((t) => t.status !== 'Closed').length;
+  const salesLiveCount = userTickets.filter((t) => t.status !== 'Closed').length;
 
   // Build dynamic navigation based strictly on active user role
   const groups = useMemo(() => {
@@ -610,21 +662,21 @@ export function TicketTable({ rows, currentRole, onAssign, onEscalate, onRelax, 
 export function Dashboard({ role, currentUser, tickets, onAssign, onEscalate, onRelax }) {
   const navigate = useNavigate();
 
+  const authorizedTickets = useMemo(() => {
+    return role.id === 'process_analyst'
+      ? tickets
+      : tickets.filter((t) => isTicketForRole(t, role, currentUser));
+  }, [role.id, tickets, currentUser]);
+
   // Role-filtered attention items
   const attentionTickets = useMemo(() => {
     let result = [];
     if (role.id === 'process_analyst') {
-      // Process Analyst cares about: Unassigned tickets (needing assignment to start SLA) & Breached tickets
       result = tickets.filter((t) => t.status === 'New' || t.slaState === 'breached' || t.slaState === 'due');
     } else if (role.id === 'manager') {
-      // Manager cares about: Escalated tickets & Breached tickets
-      result = tickets.filter((t) => t.status === 'Escalated' || t.slaState === 'breached');
-    } else if (role.id === 'marketing_tl') {
-      // Marketing TL cares about: tickets assigned to Marketing / this user
-      result = tickets.filter((t) => isTicketForRole(t, role, currentUser) && t.status !== 'Resolved' && t.status !== 'Closed');
+      result = authorizedTickets.filter((t) => t.status === 'Escalated' || t.slaState === 'breached');
     } else {
-      // Sales TL
-      result = tickets.filter((t) => isTicketForRole(t, role, currentUser) && t.status !== 'Resolved' && t.status !== 'Closed');
+      result = authorizedTickets.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed');
     }
     // Always sort newly assigned / newest created tickets on the TOP!
     return result.sort((a, b) => {
@@ -632,15 +684,16 @@ export function Dashboard({ role, currentUser, tickets, onAssign, onEscalate, on
       const timeB = new Date(b.assignedAt || b.updatedAt || b.createdAt || b.createdTimestamp || 0).getTime();
       return timeB - timeA;
     });
-  }, [role.id, tickets, currentUser]);
+  }, [role.id, tickets, authorizedTickets]);
 
   const metrics = useMemo(() => {
-    const total = tickets.length;
-    const unassigned = tickets.filter((t) => t.status === 'New' || t.assignee === 'Unassigned').length;
-    const inProgress = tickets.filter((t) => t.status === 'In Progress' || t.status === 'Open').length;
-    const resolved = tickets.filter((t) => t.status === 'Resolved' || t.status === 'Closed').length;
-    const breached = tickets.filter((t) => t.slaState === 'breached').length;
-    const escalated = tickets.filter((t) => t.status === 'Escalated').length;
+    const list = authorizedTickets;
+    const total = list.length;
+    const unassigned = list.filter((t) => t.status === 'New' || t.assignee === 'Unassigned').length;
+    const inProgress = list.filter((t) => t.status === 'In Progress' || t.status === 'Open').length;
+    const resolved = list.filter((t) => t.status === 'Resolved' || t.status === 'Closed').length;
+    const breached = list.filter((t) => t.slaState === 'breached').length;
+    const escalated = list.filter((t) => t.status === 'Escalated').length;
 
     if (role.id === 'process_analyst') {
       return [
@@ -655,35 +708,31 @@ export function Dashboard({ role, currentUser, tickets, onAssign, onEscalate, on
       return [
         ['Escalated Queue', String(escalated), CircleAlert, 'Immediate review'],
         ['Total Breaches', String(breached), AlertTriangle, 'Policy non-compliant'],
-        ['In Progress', String(inProgress), Zap, 'Cross-team execution'],
+        ['In Progress', String(inProgress), Zap, 'Reporting team execution'],
         ['Resolved', String(resolved), ShieldCheck, 'Closed successfully'],
-        ['Total Volume', String(total), LifeBuoy, 'Quarter to date'],
+        ['Total Volume', String(total), LifeBuoy, 'In your reporting scope'],
       ];
     }
     if (role.id === 'marketing_tl') {
-      const mktTickets = tickets.filter((t) => isTicketForRole(t, role, currentUser));
-      const mktTotal = mktTickets.length;
-      const mktOpen = mktTickets.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed').length;
+      const mktOpen = list.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed').length;
       return [
-        ['Marketing Tickets', String(mktTotal), LifeBuoy, 'Active pipeline'],
+        ['Marketing Tickets', String(total), LifeBuoy, 'Assigned / Raised by you'],
         ['Open / In Progress', String(mktOpen), Clock3, 'Working on issue'],
         ['Resolved', String(resolved), ShieldCheck, 'Within committed SLA'],
         ['Breaches', String(breached), CircleAlert, 'Escalated to PA'],
-        ['Total Team', String(total), Zap, 'NetBounce Placement'],
+        ['Active Pipeline', String(mktOpen), Zap, 'Your active tickets'],
       ];
     }
     // Sales TL
-    const salesTickets = tickets.filter((t) => isTicketForRole(t, role, currentUser));
-    const salesTotal = salesTickets.length;
-    const salesOpen = salesTickets.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed').length;
+    const salesOpen = list.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed').length;
     return [
-      ['Sales Tickets', String(salesTotal), LifeBuoy, 'Custom concerns'],
+      ['Sales Tickets', String(total), LifeBuoy, 'Custom concerns'],
       ['Open / In Progress', String(salesOpen), Clock3, 'Assigned to Sales'],
       ['Resolved', String(resolved), ShieldCheck, 'Successfully placed'],
       ['Breaches', String(breached), CircleAlert, 'Cross-team sync'],
-      ['Total Team', String(total), Zap, 'NetBounce Placement'],
+      ['Active Pipeline', String(salesOpen), Zap, 'Your active tickets'],
     ];
-  }, [role.id, tickets, currentUser]);
+  }, [role.id, authorizedTickets]);
 
   return (
     <div className="page page-enter">
@@ -818,8 +867,9 @@ export function Dashboard({ role, currentUser, tickets, onAssign, onEscalate, on
             </div>
           </div>
           {(() => {
-            const withinSla = tickets.filter(t => t.slaState === 'healthy' || t.slaState === 'met').length;
-            const slaPercent = tickets.length > 0 ? Math.round((withinSla / tickets.length) * 100) : 0;
+            const list = authorizedTickets;
+            const withinSla = list.filter(t => t.slaState === 'healthy' || t.slaState === 'met').length;
+            const slaPercent = list.length > 0 ? Math.round((withinSla / list.length) * 100) : 0;
             return (
               <div className="sla-content">
                 <div
@@ -840,10 +890,10 @@ export function Dashboard({ role, currentUser, tickets, onAssign, onEscalate, on
                     Within SLA <strong>{withinSla}</strong>
                   </div>
                   <div>
-                    Due Soon (&lt;1h) <strong>{tickets.filter(t => t.slaState === 'due').length}</strong>
+                    Due Soon (&lt;1h) <strong>{list.filter(t => t.slaState === 'due').length}</strong>
                   </div>
                   <div>
-                    Breached <strong>{tickets.filter(t => t.slaState === 'breached').length}</strong>
+                    Breached <strong>{list.filter(t => t.slaState === 'breached').length}</strong>
                   </div>
                 </div>
               </div>
@@ -865,11 +915,14 @@ export function TicketsPage({ routeFilter, role, currentUser, tickets, onDeleteT
 
   const visible = useMemo(() => {
     let list = tickets;
-    // Role scoping if applicable
-    if (role.id === 'manager' && routeFilter === 'escalated') {
-      list = list.filter((t) => t.status === 'Escalated' || t.slaState === 'breached');
-    } else if (role.id === 'marketing_tl' || role.id === 'sales_tl') {
+    // Strict Role scoping
+    if (role.id === 'process_analyst') {
+      // Process analyst sees all tickets
+    } else {
       list = list.filter((t) => isTicketForRole(t, role, currentUser));
+      if (role.id === 'manager' && routeFilter === 'escalated') {
+        list = list.filter((t) => t.status === 'Escalated' || t.slaState === 'breached');
+      }
     }
 
     if (routeFilter === 'live') {
@@ -1137,6 +1190,9 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
   const [email, setEmail] = useState('');
   const [roleId, setRoleId] = useState('marketing_tl');
   const [department, setDepartment] = useState('Marketing & Lead Gen');
+  const [managerId, setManagerId] = useState('');
+  const [managerName, setManagerName] = useState('');
+  const [managerEmail, setManagerEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showNewPwd, setShowNewPwd] = useState(false);
 
@@ -1146,6 +1202,9 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
   const [editEmail, setEditEmail] = useState('');
   const [editRoleId, setEditRoleId] = useState('marketing_tl');
   const [editDepartment, setEditDepartment] = useState('Marketing & Lead Gen');
+  const [editManagerId, setEditManagerId] = useState('');
+  const [editManagerName, setEditManagerName] = useState('');
+  const [editManagerEmail, setEditManagerEmail] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [showEditPwd, setShowEditPwd] = useState(false);
 
@@ -1162,6 +1221,9 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
     setEditEmail(u.email);
     setEditRoleId(u.role);
     setEditDepartment(u.department);
+    setEditManagerId(u.managerId || '');
+    setEditManagerName(u.manager || '');
+    setEditManagerEmail(u.managerEmail || '');
     setEditPassword('');
     setShowEditPwd(false);
   };
@@ -1186,6 +1248,9 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
       role: editRoleId,
       roleName: roleObj.name,
       department: editDepartment,
+      manager: editManagerName,
+      managerId: editManagerId,
+      managerEmail: editManagerEmail,
       ...(editPassword ? { password: editPassword } : {}),
     };
     onEditUser && onEditUser(updated);
@@ -1213,6 +1278,9 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
       role: roleId,
       roleName: roleObj.name,
       department,
+      manager: managerName,
+      managerId,
+      managerEmail,
       status: 'Active',
       ticketsCount: 0,
       createdAt: 'Today',
@@ -1666,6 +1734,27 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
                   </select>
                 </label>
                 <label className="span-2" style={{ color: '#64748b', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Reporting Manager
+                  <select
+                    value={editManagerId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditManagerId(val);
+                      const mgr = users.find((u) => u.id === val);
+                      setEditManagerName(mgr ? mgr.name : '');
+                      setEditManagerEmail(mgr ? mgr.email : '');
+                    }}
+                    style={{ background: 'transparent', border: 'none', borderBottom: '2px solid #e2e8f0', borderRadius: 0, padding: '8px 2px', outline: 'none', fontSize: '14px', fontWeight: 600, color: '#0f172a', width: '100%', cursor: 'pointer', boxShadow: 'none', appearance: 'auto' }}
+                    onFocus={(e) => { e.target.style.borderBottomColor = '#2563eb'; }}
+                    onBlur={(e) => { e.target.style.borderBottomColor = '#e2e8f0'; }}
+                  >
+                    <option value="">-- No Manager Assigned --</option>
+                    {users.filter((u) => u.role === 'manager').map((m) => (
+                      <option key={m.id} value={m.id}>{m.name} ({m.email})</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="span-2" style={{ color: '#64748b', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   New Password <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none', fontSize: '11px' }}>(leave blank to keep current)</span>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <input
@@ -1755,6 +1844,24 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser 
                     <option value="Sales & Placement">Sales & Placement</option>
                     <option value="Quality & Operations">Quality & Operations</option>
                     <option value="Executive Leadership">Executive Leadership</option>
+                  </select>
+                </label>
+                <label className="span-2">
+                  Reporting Manager
+                  <select
+                    value={managerId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setManagerId(val);
+                      const mgr = users.find((u) => u.id === val);
+                      setManagerName(mgr ? mgr.name : '');
+                      setManagerEmail(mgr ? mgr.email : '');
+                    }}
+                  >
+                    <option value="">-- No Manager Assigned --</option>
+                    {users.filter((u) => u.role === 'manager').map((m) => (
+                      <option key={m.id} value={m.id}>{m.name} ({m.email})</option>
+                    ))}
                   </select>
                 </label>
                 <label className="span-2">
@@ -2277,18 +2384,51 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
   const { ticketId } = useParams();
   const navigate = useNavigate();
 
-  const ticket = tickets.find((t) => t.id === ticketId) || tickets[0];
+  const ticket = tickets.find((t) => t.id === ticketId);
   const [replyText, setReplyText] = useState('');
   const [selectedTL, setSelectedTL] = useState('');
   const [showReopenModal, setShowReopenModal] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const isPA = role.id === 'process_analyst';
-  const isAssigned = ticket.assignee && ticket.assignee !== 'Unassigned';
 
   const usersList = getStoredUsers();
   const availableTLs = usersList.filter(
     (u) => u.role === 'marketing_tl' || u.role === 'sales_tl'
   );
+
+  if (!ticket) {
+    return (
+      <div className="page page-enter" style={{ textAlign: 'center', padding: '60px 20px' }}>
+        <CircleAlert size={48} color="#94a3b8" style={{ marginBottom: '16px' }} />
+        <h2>Ticket Not Found</h2>
+        <p style={{ color: '#64748b', maxWidth: '460px', margin: '8px auto 24px' }}>
+          The requested ticket does not exist or has been removed.
+        </p>
+        <Button onClick={() => navigate('/tickets')}>Return to Tickets</Button>
+      </div>
+    );
+  }
+
+  // Authorization check - prevent unauthorized TLs from viewing tickets
+  const canAccess = isTicketForRole(ticket, role, currentUser, usersList);
+  if (!canAccess) {
+    return (
+      <div className="page page-enter" style={{ textAlign: 'center', padding: '60px 20px' }}>
+        <ShieldAlert size={48} color="#ef4444" style={{ marginBottom: '16px' }} />
+        <h2>Access Restricted</h2>
+        <p style={{ color: '#64748b', maxWidth: '460px', margin: '8px auto 24px' }}>
+          You are not authorized to view this ticket. Direct access is restricted to ticket participants (Creator, Assignee, Process Analyst, or Reporting Manager).
+        </p>
+        <Button onClick={() => navigate('/tickets')}>Return to My Tickets</Button>
+      </div>
+    );
+  }
+
+  // 7-day reopen window calculation for Closed tickets
+  const isClosed = ticket.status === 'Closed';
+  const closedTime = ticket.closedAt ? new Date(ticket.closedAt).getTime() : null;
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const isReopenExpired = isClosed && closedTime && (Date.now() - closedTime > SEVEN_DAYS_MS);
 
   const handleAssignSubmit = (e) => {
     e.preventDefault();
@@ -2307,12 +2447,16 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
     setReplyText('');
   };
 
-  const handleConfirmReopen = (e) => {
+  const handleConfirmReopen = async (e) => {
     e.preventDefault();
-    if (!reopenReason.trim()) return;
-    onReopen && onReopen(ticket.id, currentUser, role.name, reopenReason.trim());
-    setShowReopenModal(false);
-    setReopenReason('');
+    if (!reopenReason.trim() || isReopenExpired) return;
+    try {
+      await onReopen(ticket.id, currentUser, role.name, reopenReason.trim());
+      setShowReopenModal(false);
+      setReopenReason('');
+    } catch (err) {
+      alert(err.message || 'Unable to reopen ticket.');
+    }
   };
 
   return (
@@ -2386,24 +2530,44 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
             </Button>
           )}
 
-          {/* Reopen Ticket Button (Sales TL, Marketing TL, and Process Analyst) */}
+          {/* Reopen Ticket Button (Sales TL, Marketing TL, and Process Analyst) with 7-day enforcement */}
           {(ticket.status === 'Resolved' || ticket.status === 'Closed') && (
-            <Button
-              variant="secondary"
-              icon={RotateCcw}
-              style={{
-                borderColor: '#f59e0b',
-                color: '#b45309',
-                background: '#fffbeb',
-                fontWeight: 600,
-              }}
-              onClick={() => {
-                setReopenReason('');
-                setShowReopenModal(true);
-              }}
-            >
-              Reopen Ticket
-            </Button>
+            <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <Button
+                variant="secondary"
+                icon={RotateCcw}
+                disabled={isReopenExpired}
+                title={isReopenExpired ? 'Reopen window expired. Tickets can only be reopened within 7 days of closure.' : 'Reopen Ticket'}
+                style={
+                  isReopenExpired
+                    ? {
+                        borderColor: '#e2e8f0',
+                        color: '#94a3b8',
+                        background: '#f8fafc',
+                        cursor: 'not-allowed',
+                        opacity: 0.6,
+                      }
+                    : {
+                        borderColor: '#f59e0b',
+                        color: '#b45309',
+                        background: '#fffbeb',
+                        fontWeight: 600,
+                      }
+                }
+                onClick={() => {
+                  if (isReopenExpired) return;
+                  setReopenReason('');
+                  setShowReopenModal(true);
+                }}
+              >
+                Reopen Ticket
+              </Button>
+              {isReopenExpired && (
+                <span style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', maxWidth: '240px', textAlign: 'right' }}>
+                  Reopen window expired. Tickets can only be reopened within 7 days of closure.
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>

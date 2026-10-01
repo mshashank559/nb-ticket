@@ -6,84 +6,170 @@ const router = express.Router();
 
 const initialSeedUsers = [
   {
-    id: "USR-ADMIN",
-    name: "Shashank M",
-    email: "shashank.m@netbounceplacement.com",
-    password: "password123",
-    role: "process_analyst",
-    roleName: "Process Analyst & Admin",
-    department: "Quality & Operations",
-    status: "Active",
-    ticketsCount: 0,
-    createdAt: "28 Sept 2026",
-  },
-  {
     id: "USR-101",
-    name: "Amit Verma",
-    email: "amit.verma@netbounce.com",
-    role: "process_analyst",
-    roleName: "Process Analyst",
-    department: "Quality & Operations",
-    status: "Active",
-    ticketsCount: 0,
-    createdAt: "10 Jan 2026",
-  },
-  {
-    id: "USR-102",
-    name: "Shilp Mehta",
-    email: "shilp.mehta@netbounce.com",
-    role: "marketing_tl",
-    roleName: "Marketing TL",
-    department: "Marketing & Lead Gen",
-    status: "Active",
-    ticketsCount: 0,
-    createdAt: "12 Jan 2026",
-  },
-  {
-    id: "USR-103",
-    name: "Rohit Verma",
-    email: "rohit.verma@netbounce.com",
-    role: "marketing_tl",
-    roleName: "Marketing TL",
-    department: "Marketing & Lead Gen",
-    status: "Active",
-    ticketsCount: 0,
-    createdAt: "01 Feb 2026",
-  },
-  {
-    id: "USR-104",
-    name: "Rohan Sen",
-    email: "rohan.sen@netbounce.com",
-    role: "sales_tl",
-    roleName: "Sales TL",
-    department: "Sales & Placement",
-    status: "Active",
-    ticketsCount: 0,
-    createdAt: "15 Jan 2026",
-  },
-  {
-    id: "USR-105",
-    name: "Priya Nair",
-    email: "priya.nair@netbounce.com",
-    role: "sales_tl",
-    roleName: "Sales TL",
-    department: "Sales & Placement",
-    status: "Active",
-    ticketsCount: 0,
-    createdAt: "05 Feb 2026",
-  },
-  {
-    id: "USR-106",
-    name: "Kavita Rao",
-    email: "kavita.rao@netbounce.com",
+    name: "Rudra Patel",
+    email: "rudra.p@netbounceplacement.com",
+    password: "MM@123",
     role: "manager",
     roleName: "Manager",
     department: "Executive Leadership",
+    team: "Management",
+    manager: "",
+    managerEmail: "",
     status: "Active",
-    ticketsCount: 0,
+    ticketsCount: 6,
     createdAt: "05 Jan 2026",
   },
+  {
+    id: "USR-106",
+    name: "Shilp Patel",
+    email: "shilp.p@netbounceplacement.com",
+    password: "MM@123",
+    role: "manager",
+    roleName: "Manager",
+    department: "Executive Leadership",
+    team: "Management",
+    manager: "",
+    managerEmail: "",
+    status: "Active",
+    ticketsCount: 4,
+    createdAt: "05 Jan 2026",
+  },
+  {
+    id: "USR-102",
+    name: "Shashank Mishra",
+    email: "mshashank559@gmail.com",
+    password: "PA@123",
+    role: "process_analyst",
+    roleName: "Process Analyst",
+    department: "Quality & Operations",
+    team: "Quality & Operations",
+    manager: "Rudra Patel",
+    managerEmail: "rudra.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 20,
+    createdAt: "12 Jan 2026",
+  },
+  {
+    id: "USR-107",
+    name: "Aditi Mohapatra",
+    email: "aditi.m@netbounceplacement.com",
+    password: "PA@123",
+    role: "process_analyst",
+    roleName: "Process Analyst",
+    department: "Quality & Operations",
+    team: "Quality & Operations",
+    manager: "Rudra Patel",
+    managerEmail: "rudra.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 15,
+    createdAt: "10 Jan 2026",
+  },
+  {
+    id: "USR-108",
+    name: "Sneha Agrawal",
+    email: "Sneha.a@netbounceplacement.com",
+    password: "PA@123",
+    role: "process_analyst",
+    roleName: "Process Analyst",
+    department: "Quality & Operations",
+    team: "Quality & Operations",
+    manager: "Shilp Patel",
+    managerEmail: "shilp.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 5,
+    createdAt: "15 Jan 2026",
+  },
+  {
+    id: "USR-103",
+    name: "Mukesh Chaudhary",
+    email: "mukesh.c@netbounceplacement.com",
+    password: "TL@123",
+    role: "marketing_tl",
+    roleName: "Marketing TL",
+    department: "Marketing & Lead Gen",
+    team: "Marketing",
+    manager: "Rudra Patel",
+    managerEmail: "rudra.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 9,
+    createdAt: "01 Feb 2026",
+  },
+  {
+    id: "USR-105",
+    name: "Shivam Barot",
+    email: "shivam.b@netbounceplacement.com",
+    password: "TL@123",
+    role: "marketing_tl",
+    roleName: "Marketing TL",
+    department: "Marketing & Lead Gen",
+    team: "Marketing",
+    manager: "Shilp Patel",
+    managerEmail: "shilp.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 14,
+    createdAt: "05 Feb 2026",
+  },
+  {
+    id: "USR-109",
+    name: "Preet A",
+    email: "preet.a@netbounceplacement.com",
+    password: "preet@12",
+    role: "sales_tl",
+    roleName: "Sales TL",
+    department: "Sales & Placement",
+    team: "Sales",
+    manager: "Rudra Patel",
+    managerEmail: "rudra.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 7,
+    createdAt: "15 Jan 2026",
+  },
+  {
+    id: "USR-104",
+    name: "Nilesh Gurjar",
+    email: "nilesh.g@netbounceplacement.com",
+    password: "Sales@123",
+    role: "sales_tl",
+    roleName: "Sales TL",
+    department: "Sales & Placement",
+    team: "Sales",
+    manager: "Shilp Patel",
+    managerEmail: "shilp.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 18,
+    createdAt: "15 Jan 2026",
+  },
+  {
+    id: "USR-110",
+    name: "Ved Prakash Gupta",
+    email: "vedprakash.g@netbounceplacement.com",
+    password: "Sales@123",
+    role: "sales_tl",
+    roleName: "Sales TL",
+    department: "Sales & Placement",
+    team: "Sales",
+    manager: "Rudra Patel",
+    managerEmail: "rudra.p@netbounceplacement.com",
+    status: "Active",
+    ticketsCount: 2,
+    createdAt: "15 Jan 2026",
+  },
 ];
+
+// Helper to ensure manager hierarchy is saved on all existing users
+let migrationDone = false;
+async function ensureManagerMapping() {
+  if (migrationDone) return;
+  try {
+    await User.updateOne({ email: /mukesh/i }, { $set: { manager: "Rudra Patel", managerEmail: "rudra.p@netbounceplacement.com", team: "Marketing" } });
+    await User.updateOne({ email: /shivam/i }, { $set: { manager: "Shilp Patel", managerEmail: "shilp.p@netbounceplacement.com", team: "Marketing" } });
+    await User.updateOne({ email: /preet/i }, { $set: { manager: "Rudra Patel", managerEmail: "rudra.p@netbounceplacement.com", team: "Sales" } });
+    await User.updateOne({ email: /nilesh/i }, { $set: { manager: "Shilp Patel", managerEmail: "shilp.p@netbounceplacement.com", team: "Sales" } });
+    await User.updateOne({ email: /vedprakash/i }, { $set: { manager: "Rudra Patel", managerEmail: "rudra.p@netbounceplacement.com", team: "Sales" } });
+    migrationDone = true;
+  } catch (e) {}
+}
 
 // GET /api/users - List all users (Auto-seed if collection empty)
 router.get('/', async (req, res) => {
@@ -91,14 +177,13 @@ router.get('/', async (req, res) => {
     if (mongoose.connection.readyState !== 1) {
       return res.json(initialSeedUsers);
     }
+    await ensureManagerMapping();
     let users = await User.find().sort({ createdAt: 1 });
     if (users.length === 0) {
       try {
         await User.insertMany(initialSeedUsers, { ordered: false });
-        console.log(`[Users Seeded] 6 Authorized directory users seeded into MongoDB.`);
-      } catch (seedErr) {
-        // Ignore duplicate key errors if concurrent request already seeded
-      }
+        console.log(`[Users Seeded] Authorized directory users seeded into MongoDB.`);
+      } catch (seedErr) {}
       users = await User.find().sort({ createdAt: 1 });
     }
     res.json(users);
