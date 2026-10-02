@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import nodemailer from 'nodemailer';
-import { emailTemplates } from './emailTemplates.js';
+import { emailTemplates, buildTicketUrl, getAppBaseUrl } from './emailTemplates.js';
 import { Notification } from '../models/Notification.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { User } from '../models/User.js';

@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 /**
  * Official Ticket Status Notification Templates
  * Derived directly from the NetBounce Ticketing Specification Document.
