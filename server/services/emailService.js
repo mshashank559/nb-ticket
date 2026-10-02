@@ -555,6 +555,16 @@ class EmailService {
       ticket: updated,
     };
   }
+
+  buildTicketUrl(ticketId, source = 'email') {
+    return buildTicketUrl(ticketId, source);
+  }
+
+  getAppBaseUrl() {
+    return getAppBaseUrl();
+  }
 }
 
+export { buildTicketUrl, getAppBaseUrl } from './emailTemplates.js';
 export const emailService = new EmailService();
+

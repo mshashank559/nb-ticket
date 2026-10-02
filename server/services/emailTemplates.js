@@ -4,12 +4,45 @@
  * Both Email and Web App notifications are generated from this unified source.
  */
 
-const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+/**
+ * Resolves the application base URL from environment configuration.
+ * Prioritizes APP_BASE_URL (per requirement), then APP_URL.
+ * In production or when deployed, strictly ensures production domain is used and never localhost.
+ */
+export function getAppBaseUrl() {
+  const envUrl = process.env.APP_BASE_URL || process.env.APP_URL;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://support.netbounceplacement.com';
+  }
+  return 'http://localhost:5173';
+}
+
+/**
+ * Centralized Ticket Deep-Link URL Builder.
+ * Ensures ALL ticket emails generate the canonical deep-link to the exact Ticket Detail / Chat screen:
+ * APP_BASE_URL/tickets/:ticketId?ref=email
+ *
+ * @param {string} ticketId - e.g. "TKT-1024"
+ * @param {string} [source='email'] - tracking parameter for audit analytics
+ * @returns {string} Fully-qualified production URL
+ */
+export function buildTicketUrl(ticketId, source = 'email') {
+  const baseUrl = getAppBaseUrl();
+  if (!ticketId) return baseUrl;
+  const cleanId = String(ticketId).replace(/^#/, '').trim();
+  const query = source ? `?ref=${encodeURIComponent(source)}` : '';
+  return `${baseUrl}/tickets/${cleanId}${query}`;
+}
+
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@netbounceplacement.com';
 const COMPANY_NAME = 'NetBounce Support';
 
 // Base HTML wrapper with NetBounce branding
 function wrapHtml(title, preheader, bodyContent, actionUrl, actionText = 'Open Ticket') {
+  const appBaseUrl = getAppBaseUrl();
   return `
 <!DOCTYPE html>
 <html>
@@ -44,7 +77,7 @@ function wrapHtml(title, preheader, bodyContent, actionUrl, actionText = 'Open T
   </div>
   <div class="container">
     <div class="header">
-      <a href="${APP_URL}" class="brand">NET<span>BOUNCE</span> SUPPORT</a>
+      <a href="${appBaseUrl}" class="brand">NET<span>BOUNCE</span> SUPPORT</a>
       <span class="badge">Official Support Notice</span>
     </div>
     <div class="content">
@@ -71,7 +104,7 @@ export const emailTemplates = {
     const ticketTitle = ticket.title || 'Untitled Ticket';
     const raisedBy = ticket.createdBy || ticket.creatorName || extra.raisedBy || 'Team Member';
     const originatingTeam = ticket.team || extra.originatingTeam || 'Originating Team';
-    const actionUrl = `${APP_URL}/tickets/${ticketId}`;
+    const actionUrl = buildTicketUrl(ticketId);
 
     const subject = `New Ticket Raised – #${ticketId}: ${ticketTitle}`;
     const text = `Dear Process Analyst Team,\n\nA new ticket has been created by ${originatingTeam} and is pending your review and assignment.\n\n* Ticket ID: ${ticketId}\n* Title: ${ticketTitle}\n* Raised By: ${raisedBy}\n* Originating Team: ${originatingTeam}\n* Status: Created\n\nPlease review and assign this ticket to the respective person/team shortly.\n\nOpen Ticket: ${actionUrl}`;
@@ -108,7 +141,7 @@ export const emailTemplates = {
     const ticketId = ticket.id;
     const ticketTitle = ticket.title || '';
     const slaDeadline = extra.slaDeadline || ticket.slaDeadline || '24 hours';
-    const actionUrl = `${APP_URL}/tickets/${ticketId}`;
+    const actionUrl = buildTicketUrl(ticketId);
 
     const subject = `Ticket #${ticketId} is now Open`;
     const text = `Dear Team,\n\nTicket #${ticketId} ("${ticketTitle}") has been reviewed and marked Open. It is now active and pending action.\n\n* SLA Deadline: ${slaDeadline}\n\nPlease take note and proceed accordingly.\n\nOpen Ticket: ${actionUrl}`;
@@ -146,7 +179,7 @@ export const emailTemplates = {
     const raisedBy = ticket.createdBy || ticket.creatorName || extra.raisedBy || 'Originating Lead';
     const team = ticket.team || extra.team || 'Department';
     const slaDeadline = extra.slaDeadline || ticket.slaDeadline || '24 hours from assignment';
-    const actionUrl = `${APP_URL}/tickets/${ticketId}`;
+    const actionUrl = buildTicketUrl(ticketId);
 
     const subject = `Ticket #${ticketId} Assigned to ${assignedTo}`;
     const text = `Dear ${assignedTo},\n\nProcess Analyst ${processAnalyst} has reviewed Ticket #${ticketId} ("${ticketTitle}") and assigned it to you / your team (${team}).\n\n* Raised By: ${raisedBy}\n* Assigned By: ${processAnalyst}\n* SLA Deadline: ${slaDeadline}\n\nPlease take necessary action within the SLA window.\n\nOpen Ticket: ${actionUrl}`;
@@ -184,7 +217,7 @@ export const emailTemplates = {
     const raisedBy = ticket.createdBy || ticket.creatorName || extra.raisedBy || 'Ticket Creator';
     const assignedTo = ticket.assignee || extra.assignedTo || 'Team Lead';
     const resolutionSummary = extra.notes || ticket.resolutionNotes || 'Issue addressed and solution verified.';
-    const actionUrl = `${APP_URL}/tickets/${ticketId}`;
+    const actionUrl = buildTicketUrl(ticketId);
 
     const subject = `Ticket #${ticketId} Resolved`;
     const text = `Dear ${raisedBy},\n\nYour ticket #${ticketId} ("${ticketTitle}") has been marked as Resolved.\n\n* Resolution Summary: ${resolutionSummary}\n* Resolved By: ${assignedTo}\n\nIf you are satisfied, no further action is needed and the ticket will be auto-closed. If not, you may reopen it.\n\nOpen Ticket: ${actionUrl}`;
@@ -222,7 +255,7 @@ export const emailTemplates = {
     const slaDeadline = extra.slaDeadline || ticket.slaDeadline || 'Approaching Deadline';
     const timeRemaining = extra.timeRemaining || ticket.sla || '4 hours';
     const currentStatus = ticket.status || 'In Progress';
-    const actionUrl = `${APP_URL}/tickets/${ticketId}`;
+    const actionUrl = buildTicketUrl(ticketId);
 
     const subject = `⏰ Reminder: Ticket #${ticketId} nearing SLA deadline`;
     const text = `Dear ${assignedTo},\n\nThis is a reminder that Ticket #${ticketId} ("${ticketTitle}") is approaching its SLA deadline and will be automatically escalated if not actioned in time.\n\n* SLA Deadline: ${slaDeadline}\n* Time Remaining: ${timeRemaining}\n* Current Status: ${currentStatus}\n\nPlease take action now to avoid escalation.\n\nOpen Ticket: ${actionUrl}`;
@@ -262,7 +295,7 @@ export const emailTemplates = {
     const assignedTo = ticket.assignee || extra.assignedTo || 'Unassigned';
     const slaDeadline = extra.slaDeadline || ticket.slaDeadline || '24 hours';
     const breachTime = ticket.breachedAt || extra.breachTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const actionUrl = `${APP_URL}/tickets/${ticketId}`;
+    const actionUrl = buildTicketUrl(ticketId);
 
     const subject = `[${ticketId}] Escalated — SLA Breach`;
     const text = `Dear ${escalatedTo},\n\nTicket #${ticketId} ("${ticketTitle}") has breached its 24-hour turnaround SLA and has been escalated to you for managerial intervention.\n\n* Ticket ID: #${ticketId}\n* Creator: ${creator}\n* Assignee: ${assignedTo}\n* Manager: ${escalatedTo}\n* SLA Deadline: ${slaDeadline}\n* Breach Time: ${breachTime}\n\nKindly review and action on priority.\n\nOpen Ticket: ${actionUrl}`;
@@ -303,7 +336,7 @@ export const emailTemplates = {
     const raisedBy = ticket.createdBy || ticket.creatorName || extra.raisedBy || 'Ticket Creator';
     const closedBy = extra.closedBy || 'Process Analyst / System';
     const resolutionSummary = extra.notes || ticket.resolutionNotes || 'Confirmed complete and archived.';
-    const actionUrl = `${APP_URL}/tickets/${ticketId}`;
+    const actionUrl = buildTicketUrl(ticketId);
 
     const subject = `Ticket #${ticketId} Closed`;
     const text = `Dear ${raisedBy},\n\nTicket #${ticketId} ("${ticketTitle}") has been confirmed complete and is now Closed.\n\n* Closed By: ${closedBy}\n* Resolution Summary: ${resolutionSummary}\n\nThank you for your patience.\n\nOpen Ticket: ${actionUrl}`;
@@ -340,7 +373,7 @@ export const emailTemplates = {
     const assignedTo = ticket.assignee || extra.assignedTo || 'Team Lead';
     const reopenedBy = extra.reopenedBy || ticket.reopenedBy || 'Requester';
     const reason = extra.reason || ticket.reopenReason || 'Resolution was not satisfactory.';
-    const actionUrl = `${APP_URL}/tickets/${ticketId}`;
+    const actionUrl = buildTicketUrl(ticketId);
 
     const subject = `Ticket #${ticketId} Re-Opened`;
     const text = `Dear ${assignedTo},\n\nTicket #${ticketId} ("${ticketTitle}") has been Re-Opened by ${reopenedBy} as the previous resolution was not satisfactory.\n\n* Reason: ${reason}\n\nPlease review and take further action.\n\nOpen Ticket: ${actionUrl}`;
@@ -379,7 +412,7 @@ export const emailTemplates = {
     const extensionDays = extra.extensionDays || 1;
     const reason = extra.reason || extra.relaxationReason || ticket.relaxationReason || 'Additional investigation required.';
     const slaDeadline = extra.newDeadline || ticket.slaDeadline || 'Extended by 24h';
-    const actionUrl = `${APP_URL}/tickets/${ticketId}`;
+    const actionUrl = buildTicketUrl(ticketId);
 
     const subject = `Extension Requested for Ticket #${ticketId}`;
     const text = `Dear Team,\n\nAn extension of ${extensionDays} day(s) has been requested for Ticket #${ticketId} ("${ticketTitle}").\n\n* Requested By: ${assignedTo}\n* Reason: ${reason}\n* New SLA Deadline: ${slaDeadline}\n\nOpen Ticket: ${actionUrl}`;
@@ -415,7 +448,7 @@ export const emailTemplates = {
     const ticketId = ticket.id;
     const ticketTitle = ticket.title || '';
     const subject = `Re: [${ticketId}] ${ticketTitle}`;
-    const actionUrl = `${APP_URL}/tickets/${ticketId}`;
+    const actionUrl = buildTicketUrl(ticketId);
 
     const bodyContent = `
       <div style="margin-bottom: 20px;">

@@ -73,6 +73,32 @@ router.delete('/audit-logs/clear-all', async (req, res) => {
   }
 });
 
+// POST /api/email/track-open - Audit ticket opened via email link
+router.post('/track-open', async (req, res) => {
+  try {
+    const { ticketId, user, email } = req.body;
+    if (ticketId) {
+      const log = new AuditLog({
+        id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        ticketId,
+        eventType: 'TICKET_OPENED_FROM_EMAIL',
+        actor: user || email || 'Authorized User',
+        subject: `Ticket #${ticketId} opened from email deep-link`,
+        deliveryStatus: 'delivered',
+        metadata: {
+          source: 'email_deep_link',
+          openedAt: new Date(),
+          userAgent: req.headers['user-agent'] || '',
+        },
+      });
+      await log.save();
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/email/config - View current email configuration status (safe, no secrets)
 router.get('/config', (req, res) => {
   res.json({
@@ -81,8 +107,9 @@ router.get('/config', (req, res) => {
     smtpConfigured: !!emailService.transporter,
     smtpHost: process.env.SMTP_HOST || 'Not Configured (Simulation Mode)',
     smtpPort: process.env.SMTP_PORT || '587',
-    appUrl: process.env.APP_URL || 'http://localhost:5173',
+    appUrl: emailService.getAppBaseUrl(),
   });
 });
 
 export default router;
+

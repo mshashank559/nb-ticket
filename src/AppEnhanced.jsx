@@ -3263,7 +3263,23 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
   const { ticketId } = useParams();
   const navigate = useNavigate();
 
-  const ticket = tickets.find((t) => t.id === ticketId);
+  const [directTicket, setDirectTicket] = useState(null);
+  const [fetchingDirect, setFetchingDirect] = useState(false);
+
+  // If ticket is not yet in tickets array (e.g. opened directly via email deep-link), fetch from backend API
+  useEffect(() => {
+    if (ticketId && !tickets.some((t) => t.id === ticketId)) {
+      setFetchingDirect(true);
+      ticketApi.get(ticketId)
+        .then((res) => {
+          if (res && res.id) setDirectTicket(res);
+        })
+        .catch(() => {})
+        .finally(() => setFetchingDirect(false));
+    }
+  }, [ticketId, tickets]);
+
+  const ticket = tickets.find((t) => t.id === ticketId) || directTicket;
   const [replyText, setReplyText] = useState('');
   const [selectedTL, setSelectedTL] = useState('');
   const [showReopenModal, setShowReopenModal] = useState(false);
@@ -3278,6 +3294,28 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
     }).catch(() => {});
   }, []);
 
+  // Track email open audit event (Requirement 23)
+  useEffect(() => {
+    if (ticket && typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const isFromEmail = params.get('ref') === 'email' || params.get('source') === 'email';
+      if (isFromEmail) {
+        const auditKey = `email_open_tracked_${ticket.id}`;
+        if (!sessionStorage.getItem(auditKey)) {
+          sessionStorage.setItem(auditKey, '1');
+          fetch('/api/email/track-open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ticketId: ticket.id,
+              user: currentUser,
+            }),
+          }).catch(() => {});
+        }
+      }
+    }
+  }, [ticket?.id, currentUser]);
+
   const availableTLs = usersList.filter(
     (u) => (u.role === 'marketing_tl' || u.role === 'sales_tl') && String(u.status || '').toLowerCase() === 'active'
   );
@@ -3291,6 +3329,15 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
     }
   }, [ticket]);
 
+  if (fetchingDirect && !ticket) {
+    return (
+      <div className="page page-enter" style={{ textAlign: 'center', padding: '80px 20px' }}>
+        <div style={{ display: 'inline-block', width: '36px', height: '36px', border: '3px solid rgba(96, 165, 250, 0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        <p style={{ color: '#94a3b8', marginTop: '16px', fontSize: '14px' }}>Loading ticket #{ticketId}...</p>
+      </div>
+    );
+  }
+
   if (!ticket) {
     return (
       <div className="page page-enter" style={{ textAlign: 'center', padding: '60px 20px' }}>
@@ -3303,6 +3350,7 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
       </div>
     );
   }
+
 
   // Authorization check - prevent unauthorized TLs from viewing tickets
   const canAccess = isTicketForRole(ticket, role, currentUser, usersList);
@@ -5030,6 +5078,34 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
   );
 }
 
+// Deep-Link & Authentication Protection (Requirements 10 & 18)
+function RequireAuth({ isAuthenticated, children }) {
+  const location = useLocation();
+  if (!isAuthenticated) {
+    const returnUrl = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?redirect=${returnUrl}`} replace />;
+  }
+  return children;
+}
+
+function LoginRoute({ isAuthenticated, onLogin }) {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const redirectParam = searchParams.get('redirect');
+
+  if (isAuthenticated) {
+    let dest = '/dashboard';
+    if (redirectParam) {
+      const decoded = decodeURIComponent(redirectParam);
+      if (decoded.startsWith('/') && !decoded.startsWith('//')) {
+        dest = decoded;
+      }
+    }
+    return <Navigate to={dest} replace />;
+  }
+  return <Login onLogin={onLogin} />;
+}
+
 export default function AppEnhanced() {
   const [role, setRole] = useState(() => {
     const savedId = sessionStorage.getItem('demoRole');
@@ -5077,26 +5153,23 @@ export default function AppEnhanced() {
         <Route
           path="/login"
           element={
-            isAuthenticated ? (
-              <Navigate to="/dashboard" />
-            ) : (
-              <Login onLogin={handleLogin} />
-            )
+            <LoginRoute
+              isAuthenticated={isAuthenticated}
+              onLogin={handleLogin}
+            />
           }
         />
         <Route
           path="*"
           element={
-            isAuthenticated ? (
+            <RequireAuth isAuthenticated={isAuthenticated}>
               <Shell
                 role={role}
                 currentUser={currentUser}
                 onSignOut={handleSignOut}
                 onSwitchUser={handleSwitchUser}
               />
-            ) : (
-              <Navigate to="/login" />
-            )
+            </RequireAuth>
           }
         />
       </Routes>
