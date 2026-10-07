@@ -274,17 +274,50 @@ router.post('/', async (req, res) => {
       payload.managerEmail = '';
       payload.managerId = '';
     }
-    const count = await User.countDocuments();
-    const id = payload.id || `USR-${101 + count}`;
+
+    // Determine next unique USR-XXX ID by finding highest existing numeric ID
+    const existingUsers = await User.find({}, 'id');
+    let maxNum = 100;
+    const existingIdSet = new Set();
+
+    for (const u of existingUsers) {
+      if (u.id) {
+        existingIdSet.add(u.id);
+        const match = String(u.id).match(/^USR-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      }
+    }
+
+    let finalId = payload.id;
+    // If payload.id is missing or already exists in database, generate next fresh unique ID
+    if (!finalId || existingIdSet.has(finalId)) {
+      let nextNum = maxNum + 1;
+      while (existingIdSet.has(`USR-${nextNum}`)) {
+        nextNum++;
+      }
+      finalId = `USR-${nextNum}`;
+    }
+
     const newUser = new User({
       ...payload,
-      id,
+      id: finalId,
       createdAt: payload.createdAt || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     });
     await newUser.save();
     console.log(`[User Created] ID: ${newUser.id}, Name: ${newUser.name}`);
+
+    // Emit real-time socket events for User Directory sync
+    try {
+      global.__io?.emit('users_changed', newUser);
+      global.__io?.emit('user_enrolled', newUser);
+    } catch (sockErr) {}
+
     res.status(201).json(newUser);
   } catch (error) {
+    console.error('Error creating user:', error);
     res.status(500).json({ error: error.message });
   }
 });

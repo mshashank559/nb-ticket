@@ -1374,10 +1374,26 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
     e.preventDefault();
     if (!name || !email) return;
 
-    const roleObj = roles.find((r) => r.id === roleId) || roles[1];
     const isMkt = roleId === 'marketing_tl';
+
+    // Calculate guaranteed unique user ID
+    let maxUserNum = 100;
+    const userIds = new Set(users.map((u) => u.id));
+    for (const u of users) {
+      const match = (u.id || '').match(/^USR-(\d+)$/i);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxUserNum) maxUserNum = n;
+      }
+    }
+    let nextNum = maxUserNum + 1;
+    while (userIds.has(`USR-${nextNum}`)) {
+      nextNum++;
+    }
+    const safeId = `USR-${nextNum}`;
+
     const newUser = {
-      id: `USR-${100 + users.length + 1}`,
+      id: safeId,
       name,
       email,
       role: roleId,

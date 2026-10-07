@@ -984,7 +984,20 @@ export const userApi = {
       }
     } catch (e) {}
     const current = getStoredUsers();
-    const newUser = { ...user, id: `USR-${101 + current.length}` };
+    let maxNum = 100;
+    const existingIds = new Set(current.map((u) => u.id));
+    for (const u of current) {
+      const match = (u.id || '').match(/^USR-(\d+)$/i);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxNum) maxNum = n;
+      }
+    }
+    let nextNum = maxNum + 1;
+    while (existingIds.has(`USR-${nextNum}`)) {
+      nextNum++;
+    }
+    const newUser = { ...user, id: `USR-${nextNum}` };
     saveStoredUsers([...current, newUser]);
     return newUser;
   },
