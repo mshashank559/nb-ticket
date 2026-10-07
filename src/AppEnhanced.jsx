@@ -1372,8 +1372,8 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name || !email) return;
-
+    if (!name.trim() || !email.trim()) return;
+    const roleObj = roles.find((r) => r.id === roleId) || roles[1];
     const isMkt = roleId === 'marketing_tl';
 
     // Calculate guaranteed unique user ID
