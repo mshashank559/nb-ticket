@@ -204,28 +204,36 @@ class EmailService {
     // ── 6. MANAGERS — strictly Assignee's specific manager on escalation ──
     if (eventType === 'Escalated') {
       if (extra.managerEmail && extra.managerEmail.includes('@')) {
-        recipients.add(extra.managerEmail);
+        recipients.add(extra.managerEmail.trim());
       } else {
         let resolvedMgrEmail = null;
         if (ticket.assignee && ticket.assignee !== 'Unassigned') {
-          const assigneeUser = await User.findOne({
-            name: { $regex: new RegExp(`^${ticket.assignee.trim()}$`, 'i') },
-          });
-          if (assigneeUser?.managerEmail) {
-            resolvedMgrEmail = assigneeUser.managerEmail;
+          const queryConditions = [
+            { name: { $regex: new RegExp(`^${ticket.assignee.trim()}$`, 'i') } },
+          ];
+          if (ticket.assigneeId) queryConditions.push({ id: ticket.assigneeId });
+          if (ticket.assigneeEmail) queryConditions.push({ email: ticket.assigneeEmail.toLowerCase().trim() });
+
+          const assigneeUser = await User.findOne({ $or: queryConditions });
+
+          if (assigneeUser?.managerEmail && assigneeUser.managerEmail.includes('@')) {
+            resolvedMgrEmail = assigneeUser.managerEmail.trim();
+          } else if (assigneeUser?.managerId) {
+            const mgr = await User.findOne({ id: assigneeUser.managerId });
+            if (mgr?.email && mgr.email.includes('@')) resolvedMgrEmail = mgr.email.trim();
           } else if (assigneeUser?.manager) {
             const mgr = await User.findOne({
               name: { $regex: new RegExp(`^${assigneeUser.manager.trim()}$`, 'i') },
             });
-            if (mgr?.email) resolvedMgrEmail = mgr.email;
+            if (mgr?.email && mgr.email.includes('@')) resolvedMgrEmail = mgr.email.trim();
           }
         }
+
         if (resolvedMgrEmail) {
           recipients.add(resolvedMgrEmail);
-        } else {
-          const mgrEmails = await this.resolveUserEmails({ role: 'manager' });
-          if (mgrEmails.length > 0) recipients.add(mgrEmails[0]);
         }
+        // STRICT RULE: NEVER fall back to Shilp Patel or mgrEmails[0].
+        // If an assignee has no designated manager, do not spam unrelated managers.
       }
     }
 

@@ -90,8 +90,9 @@ const initialSeedUsers = [
     roleName: "Marketing TL",
     department: "Marketing & Lead Gen",
     team: "Marketing",
-    manager: "Shilp Patel",
-    managerEmail: "shilp.p@netbounceplacement.com",
+    manager: "Rudra Patel",
+    managerId: "USR-101",
+    managerEmail: "rudra.p@netbounceplacement.com",
     status: "Active",
     ticketsCount: 0,
     createdAt: "01 Feb 2026",
@@ -106,6 +107,7 @@ const initialSeedUsers = [
     department: "Marketing & Lead Gen",
     team: "Marketing",
     manager: "Shilp Patel",
+    managerId: "USR-106",
     managerEmail: "shilp.p@netbounceplacement.com",
     status: "Active",
     ticketsCount: 0,
@@ -139,7 +141,7 @@ const initialSeedUsers = [
     managerEmail: "",
     status: "Active",
     ticketsCount: 0,
-    createdAt: "15 Jan 2026",
+    createdAt: "10 Jan 2026",
   },
   {
     id: "USR-110",
@@ -168,10 +170,15 @@ async function ensureManagerMapping() {
       { role: { $in: ['sales_tl', 'process_analyst', 'manager'] } },
       { $set: { manager: '', managerEmail: '', managerId: '' } }
     );
-    // Ensure Marketing TLs have Marketing Manager Shilp Patel
-    await User.updateMany(
-      { role: 'marketing_tl' },
-      { $set: { manager: 'Shilp Patel', managerEmail: 'shilp.p@netbounceplacement.com', team: 'Marketing' } }
+    // Explicitly ensure Mukesh Chaudhary is mapped to Rudra Patel
+    await User.updateOne(
+      { name: { $regex: /^mukesh chaudhary$/i } },
+      { $set: { manager: 'Rudra Patel', managerId: 'USR-101', managerEmail: 'rudra.p@netbounceplacement.com' } }
+    );
+    // Explicitly ensure Shivam Barot is mapped to Shilp Patel
+    await User.updateOne(
+      { name: { $regex: /^shivam barot$/i } },
+      { $set: { manager: 'Shilp Patel', managerId: 'USR-106', managerEmail: 'shilp.p@netbounceplacement.com' } }
     );
     migrationDone = true;
   } catch (e) {
