@@ -901,6 +901,16 @@ export const ticketApi = {
 
     // Call dedicated backend messages endpoint to send real email through Centralized Support Email
     try {
+      const allUsers = getStoredUsers();
+      const currentU = allUsers.find((u) => u.name === userName || (u.email && u.email.toLowerCase() === userName.toLowerCase()));
+      let resolvedAuthorEmail = currentU?.email;
+      if (!resolvedAuthorEmail) {
+        try {
+          const authUser = JSON.parse(sessionStorage.getItem('authUser') || '{}');
+          if (authUser?.email) resolvedAuthorEmail = authUser.email;
+        } catch (e) {}
+      }
+
       await fetch(apiUrl(`/api/tickets/${ticketId}/messages`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -908,7 +918,7 @@ export const ticketApi = {
           author: userName,
           role: userRole,
           text,
-          authorEmail: targetTicket?.candidateEmail || undefined,
+          authorEmail: resolvedAuthorEmail,
         }),
       });
     } catch (e) {

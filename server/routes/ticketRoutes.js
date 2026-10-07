@@ -291,9 +291,21 @@ router.post('/', async (req, res) => {
     const now = new Date();
     const deadline = isDirectlyAssigned ? new Date(now.getTime() + 24 * 60 * 60 * 1000) : null;
 
+    let creatorName = req.body.creatorName || req.body.createdBy || '';
+    let creatorEmail = req.body.creatorEmail || '';
+    if (creatorName && !creatorEmail) {
+      try {
+        const cUser = await User.findOne({ name: { $regex: new RegExp(`^${creatorName.trim()}$`, 'i') } });
+        if (cUser?.email) creatorEmail = cUser.email;
+      } catch (e) {}
+    }
+
     const payload = {
       ...reqBody,
       id: nextId,
+      creatorName,
+      creatorEmail,
+      createdBy: creatorName || reqBody.createdBy || 'User',
       status: req.body.status || (isDirectlyAssigned ? 'In Progress' : 'New'),
       assignee: targetAssignee,
       assigneeId: targetAssigneeId,
@@ -847,8 +859,18 @@ const handleReplyMessage = async (req, res) => {
     if (!updated) return res.status(404).json({ error: 'Ticket not found' });
 
     // Send real email through Centralized Support Email preserving the thread
+    let effectiveAuthorEmail = authorEmail;
+    if (!effectiveAuthorEmail && author) {
+      try {
+        const authorUser = await User.findOne({
+          name: { $regex: new RegExp(`^${author.trim()}$`, 'i') },
+        });
+        if (authorUser?.email) effectiveAuthorEmail = authorUser.email;
+      } catch (e) {}
+    }
+
     emailService
-      .sendTicketReply(updated, text, author || 'User', role || 'User', authorEmail)
+      .sendTicketReply(updated, text, author || 'User', role || 'User', effectiveAuthorEmail)
       .then(async (sendResult) => {
         const status = sendResult?.deliveryStatus || 'sent';
         await Ticket.updateOne(

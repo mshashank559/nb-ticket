@@ -97,15 +97,30 @@ class EmailService {
     paEmails.forEach((em) => recipients.add(em));
 
     // ── 2. TICKET RAISER — the specific person who created this ticket ──
-    // Priority: stored salesPoc email > creatorName DB lookup
-    if (ticket.salesPoc && ticket.salesPoc.includes('@')) {
-      recipients.add(ticket.salesPoc);
-    } else if (ticket.creatorName) {
-      // Name-based lookup — matches ONLY the raiser by name, not their whole team
+    const assigneeEmailLower = (ticket.assigneeEmail || ticket.marketingTlEmail || '').toLowerCase().trim();
+
+    if (ticket.creatorEmail && ticket.creatorEmail.includes('@') && ticket.creatorEmail.toLowerCase().trim() !== assigneeEmailLower) {
+      recipients.add(ticket.creatorEmail.trim());
+    }
+
+    const raiserName = (ticket.creatorName || ticket.createdBy || '').trim();
+    if (raiserName) {
       const creatorEmails = await this.resolveUserEmails({
-        name: { $regex: new RegExp(`^${ticket.creatorName.trim()}$`, 'i') },
+        name: { $regex: new RegExp(`^${raiserName}$`, 'i') },
       });
-      creatorEmails.forEach((em) => recipients.add(em));
+      creatorEmails.forEach((em) => {
+        if (em.toLowerCase().trim() !== assigneeEmailLower) {
+          recipients.add(em.trim());
+        }
+      });
+    }
+
+    if (ticket.salesTlEmail && ticket.salesTlEmail.includes('@') && ticket.salesTlEmail.toLowerCase().trim() !== assigneeEmailLower) {
+      recipients.add(ticket.salesTlEmail.trim());
+    }
+
+    if (ticket.salesPoc && ticket.salesPoc.includes('@') && ticket.salesPoc.toLowerCase().trim() !== assigneeEmailLower) {
+      recipients.add(ticket.salesPoc.trim());
     }
 
     // ── 3. SPECIFIC ASSIGNED TL — ONLY the one person assigned to this ticket ──
@@ -144,12 +159,39 @@ class EmailService {
       }
     }
 
-    // ── 4. REPLY events — notify the correct party (not both) ──
+    // ── 4. REPLY events — notify all active thread participants (excluding sender) ──
     if (eventType === 'Reply') {
-      const senderRole = (extra.senderRole || '').toLowerCase();
-      const senderEmail = extra.senderEmail || '';
+      // Collect participants from ticket conversation & thread history
+      if (Array.isArray(ticket.conversation)) {
+        for (const msg of ticket.conversation) {
+          if (msg.author) {
+            const authorUsers = await this.resolveUserEmails({
+              name: { $regex: new RegExp(`^${msg.author.trim()}$`, 'i') },
+            });
+            authorUsers.forEach((em) => recipients.add(em));
+          }
+        }
+      }
+      if (Array.isArray(ticket.thread)) {
+        for (const msg of ticket.thread) {
+          if (msg.name) {
+            const threadUsers = await this.resolveUserEmails({
+              name: { $regex: new RegExp(`^${msg.name.trim()}$`, 'i') },
+            });
+            threadUsers.forEach((em) => recipients.add(em));
+          }
+        }
+      }
+
+      const senderEmail = (extra.senderEmail || extra.currentActorEmail || '').toLowerCase().trim();
       // The person who sent the reply should NOT receive their own reply notification
-      if (senderEmail) recipients.delete(senderEmail);
+      if (senderEmail) {
+        recipients.forEach((em) => {
+          if (em.toLowerCase().trim() === senderEmail) {
+            recipients.delete(em);
+          }
+        });
+      }
     }
 
     // ── 5. CANDIDATE — only on ticket resolution / closure ──

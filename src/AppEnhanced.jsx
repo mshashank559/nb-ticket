@@ -2765,6 +2765,11 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
   }, [role.id]);
 
   // Candidate Information
+  const authUserStr = sessionStorage.getItem('authUser');
+  let authUserObj = null;
+  try { authUserObj = JSON.parse(authUserStr || '{}'); } catch (e) {}
+  const currentUserEmail = authUserObj?.email || '';
+
   const [candidateName, setCandidateName] = useState('');
   const [candidateEmail, setCandidateEmail] = useState('');
   const [candidatePhone, setCandidatePhone] = useState('');
@@ -2800,10 +2805,8 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
       const tl = marketingTLs.find((u) => u.name === selectedName);
       const email = tl?.email || '';
       setMarketingTlEmail(email);
-      setSalesPoc(email);
     } else {
       setMarketingTlEmail('');
-      setSalesPoc('');
     }
   };
 
@@ -2871,6 +2874,8 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
       subTeam: isSales ? 'Placement Ops' : 'Inbound Marketing',
       creatorRole: isSales ? 'sales_tl' : 'marketing_tl',
       createdBy: currentUser,
+      creatorName: currentUser,
+      creatorEmail: currentUserEmail,
       priority,
       category: isSales ? mainTopic : 'Custom Marketing Issue',
       subCategory: isSales ? subTopic : customIssueTitle,
@@ -2880,14 +2885,14 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
       targetSalesTlId: isSales ? '' : (selectedSalesTl?.id || ''),
       targetSalesTlName: isSales ? '' : (selectedSalesTl?.name || ''),
       targetSalesTlEmail: isSales ? '' : (selectedSalesTl?.email || ''),
-      salesTlEmail: isSales ? '' : (selectedSalesTl?.email || ''),
+      salesTlEmail: isSales ? currentUserEmail : (selectedSalesTl?.email || ''),
       assignee: isSales ? (recruiter || 'Unassigned') : (selectedSalesTl?.name || 'Unassigned'),
       assigneeId: isSales ? '' : (selectedSalesTl?.id || ''),
       assigneeEmail: isSales ? '' : (selectedSalesTl?.email || ''),
       assigneeRole: isSales ? (recruiter ? 'marketing_tl' : '') : (selectedSalesTl ? 'sales_tl' : ''),
       salesRep: isSales ? salesRep : '',
-      salesPoc: isSales ? (marketingTlEmail || salesPoc) : '',
-      marketingTlEmail: isSales ? (marketingTlEmail || salesPoc) : '',
+      salesPoc: isSales ? currentUserEmail : '',
+      marketingTlEmail: isSales ? (marketingTlEmail || '') : '',
       salesSenior: '',
       description,
       attachments: attachedFiles,
@@ -3015,7 +3020,7 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
                 <input
                   readOnly
                   placeholder="Auto-filled from Marketing TL"
-                  value={marketingTlEmail || salesPoc}
+                  value={marketingTlEmail}
                   style={{ background: '#f8fafc', cursor: 'not-allowed', color: '#475569' }}
                 />
               </label>
