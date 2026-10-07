@@ -77,6 +77,13 @@ export function isClientMobile() {
   const ua = (navigator.userAgent || '').toLowerCase();
   const platform = (navigator.platform || '').toLowerCase();
 
+  // 0. Genuine Windows PC / Laptop Detection (Windows 10, 11, etc.)
+  // Standard laptops and desktops running Windows are genuine PC devices.
+  const isWindowsPC = (ua.includes('windows nt') || platform.includes('win')) && !ua.includes('windows phone');
+  if (isWindowsPC) {
+    return false;
+  }
+
   // 1. Client Hints API (Standard Mobile View)
   if (navigator.userAgentData && navigator.userAgentData.mobile === true) {
     return true;
@@ -94,6 +101,12 @@ export function isClientMobile() {
     Boolean(navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
   if (isAppleTouch) {
     return true;
+  }
+
+  // Genuine Mac (MacBook / iMac without touchscreen): always recognized as desktop
+  const isGenuineMac = (platform.includes('mac') || ua.includes('macintosh')) && (!navigator.maxTouchPoints || navigator.maxTouchPoints <= 1);
+  if (isGenuineMac) {
+    return false;
   }
 
   // 4. Physical Screen Dimensions Check (Immune to Desktop Site zoom / virtual viewport)
