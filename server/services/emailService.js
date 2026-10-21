@@ -6,6 +6,15 @@ import { AuditLog } from '../models/AuditLog.js';
 import { User } from '../models/User.js';
 import { Ticket } from '../models/Ticket.js';
 
+export function normalizeEmail(email) {
+  if (!email || typeof email !== 'string') return '';
+  const clean = email.toLowerCase().trim();
+  if (clean === 'mukesh.c@netbounceplacement.com') {
+    return 'mukesh@netbounceplacement.com';
+  }
+  return clean;
+}
+
 class EmailService {
   constructor() {
     this.supportEmail = process.env.SUPPORT_EMAIL || 'support@netbounceplacement.com';
@@ -237,17 +246,25 @@ class EmailService {
       }
     }
 
+    // Normalize all recipient emails (e.g. alias mukesh.c@ to mukesh@)
+    const normalizedRecipients = new Set();
+    recipients.forEach((em) => {
+      const n = normalizeEmail(em);
+      if (n) normalizedRecipients.add(n);
+    });
+
     // ── 7. Remove the acting user so they don't email themselves ──
-    if (extra.currentActorEmail) {
-      recipients.delete(extra.currentActorEmail);
+    const currentActorNorm = normalizeEmail(extra.currentActorEmail || extra.senderEmail);
+    if (currentActorNorm) {
+      normalizedRecipients.delete(currentActorNorm);
     }
 
     // ── 8. Fallback: if no recipient resolved, send to support inbox ──
-    if (recipients.size === 0) {
-      recipients.add(this.supportEmail);
+    if (normalizedRecipients.size === 0) {
+      normalizedRecipients.add(this.supportEmail);
     }
 
-    const recipientList = Array.from(recipients).filter(Boolean);
+    const recipientList = Array.from(normalizedRecipients).filter(Boolean);
     console.log(`[EmailService] 📧 Strict recipients for "${eventType}" on ticket ${ticket.id || ticket._id}:`, recipientList);
     return recipientList;
   }

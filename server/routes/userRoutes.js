@@ -84,7 +84,7 @@ const initialSeedUsers = [
   {
     id: "USR-103",
     name: "Mukesh Chaudhary",
-    email: "mukesh.c@netbounceplacement.com",
+    email: "mukesh@netbounceplacement.com",
     password: "TL@123",
     role: "marketing_tl",
     roleName: "Marketing TL",
