@@ -3417,12 +3417,14 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
 
   const handleConfirmReopen = async (e) => {
     e.preventDefault();
-    if (!reopenReason.trim() || isReopenExpired || isReopening) return;
+    const reason = reopenReason.trim();
+    if (!reason || isReopenExpired || isReopening) return;
     setIsReopening(true);
+    // Instant UI feedback: close modal and clear input immediately
+    setShowReopenModal(false);
+    setReopenReason('');
     try {
-      await onReopen(ticket.id, currentUser, role.name, reopenReason.trim());
-      setShowReopenModal(false);
-      setReopenReason('');
+      await onReopen(ticket.id, currentUser, role.name, reason);
     } catch (err) {
       alert(err.message || 'Unable to reopen ticket.');
     } finally {
@@ -4903,38 +4905,80 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
     };
   }, []);
 
-  // Actions
+  // Actions with Instant Optimistic UI Updates (0ms latency for all users)
   const handleAssign = async (ticketId, assigneeUser, paName) => {
+    const targetName = typeof assigneeUser === 'object' ? assigneeUser.name : assigneeUser;
+    setTicketsState((prev) =>
+      prev.map((t) => (t.id === ticketId ? { ...t, assignee: targetName, status: 'In Progress', slaState: 'healthy' } : t))
+    );
     await ticketApi.assign(ticketId, assigneeUser, paName);
     const updatedList = await ticketApi.list();
     setTicketsState(updatedList);
   };
 
   const handleEscalate = async (ticketId) => {
+    setTicketsState((prev) =>
+      prev.map((t) => (t.id === ticketId ? { ...t, isEscalated: true, slaState: 'breached' } : t))
+    );
     await ticketApi.escalate(ticketId, currentUser);
     const updatedList = await ticketApi.list();
     setTicketsState(updatedList);
   };
 
   const handleRelax = async (ticketId) => {
+    setTicketsState((prev) =>
+      prev.map((t) => (t.id === ticketId ? { ...t, isRelaxed: true, relaxationCount: (t.relaxationCount || 0) + 1 } : t))
+    );
     await ticketApi.relax(ticketId, currentUser);
     const updatedList = await ticketApi.list();
     setTicketsState(updatedList);
   };
 
   const handleResolve = async (ticketId, userName, userRole) => {
+    // 1. Instant local state update (0ms) - Badge turns green immediately
+    setTicketsState((prev) =>
+      prev.map((t) => (t.id === ticketId ? { ...t, status: 'Resolved', slaState: 'met', sla: 'Resolved', resolvedAt: 'Just now' } : t))
+    );
     await ticketApi.resolve(ticketId, userName, userRole);
     const updatedList = await ticketApi.list();
     setTicketsState(updatedList);
   };
 
   const handleReopen = async (ticketId, userName, userRole, reason) => {
+    // 1. Instant local state update (0ms) - Status switches to In Progress immediately
+    const nowStr = 'Just now';
+    setTicketsState((prev) =>
+      prev.map((t) =>
+        t.id === ticketId
+          ? {
+              ...t,
+              status: 'In Progress',
+              slaState: 'healthy',
+              sla: '24h 00m',
+              reopenedAt: nowStr,
+              reopenedBy: `${userName} (${userRole})`,
+              reopenReason: reason,
+            }
+          : t
+      )
+    );
     await ticketApi.reopen(ticketId, userName, userRole, reason);
     const updatedList = await ticketApi.list();
     setTicketsState(updatedList);
   };
 
   const handleAddReply = async (ticketId, userName, userRole, text) => {
+    const newMsg = {
+      id: `msg-${Date.now()}`,
+      name: userName,
+      role: userRole,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text,
+      mine: true,
+    };
+    setTicketsState((prev) =>
+      prev.map((t) => (t.id === ticketId ? { ...t, thread: [...(t.thread || []), newMsg] } : t))
+    );
     await ticketApi.addReply(ticketId, userName, userRole, text);
     const updatedList = await ticketApi.list();
     setTicketsState(updatedList);

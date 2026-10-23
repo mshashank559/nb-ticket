@@ -562,22 +562,20 @@ export const ticketApi = {
     const reordered = targetTicket ? [targetTicket, ...updated.filter(t => t.id !== ticketId)] : updated;
     saveStoredTickets(reordered);
 
-    // Call dedicated backend assign endpoint to start SLA and fire Support email
-    try {
-      await fetch(apiUrl(`/api/tickets/${ticketId}/assign`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assignee: assigneeUser.name,
-          assigneeId: assigneeUser.id || '',
-          assigneeEmail: assigneeUser.email || '',
-          paName,
-          assigneeRole: roleId,
-        }),
-      });
-    } catch (e) {
+    // Call dedicated backend assign endpoint asynchronously (non-blocking)
+    fetch(apiUrl(`/api/tickets/${ticketId}/assign`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        assignee: assigneeUser.name,
+        assigneeId: assigneeUser.id || '',
+        assigneeEmail: assigneeUser.email || '',
+        paName,
+        assigneeRole: roleId,
+      }),
+    }).catch((e) => {
       if (targetTicket) syncToBackend('PUT', `/${ticketId}`, targetTicket);
-    }
+    });
 
     return targetTicket;
   },
@@ -626,16 +624,14 @@ export const ticketApi = {
     const targetTicket = updated.find((t) => t.id === ticketId);
     saveStoredTickets(updated);
 
-    // Call dedicated backend escalate endpoint to fire Manager Support email
-    try {
-      await fetch(apiUrl(`/api/tickets/${ticketId}/escalate`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userName: paName, reason }),
-      });
-    } catch (e) {
+    // Call dedicated backend escalate endpoint asynchronously (non-blocking)
+    fetch(apiUrl(`/api/tickets/${ticketId}/escalate`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userName: paName, reason }),
+    }).catch((e) => {
       if (targetTicket) syncToBackend('PUT', `/${ticketId}`, targetTicket);
-    }
+    });
 
     return targetTicket;
   },
@@ -749,16 +745,14 @@ export const ticketApi = {
     const targetTicket = updated.find((t) => t.id === ticketId);
     saveStoredTickets(updated);
 
-    // Call dedicated backend resolve endpoint to fire Resolution email
-    try {
-      await fetch(apiUrl(`/api/tickets/${ticketId}/resolve`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userName, userRole, notes: notes || "Solution implemented and verified." }),
-      });
-    } catch (e) {
+    // Call dedicated backend resolve endpoint asynchronously (non-blocking)
+    fetch(apiUrl(`/api/tickets/${ticketId}/resolve`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userName, userRole, notes: notes || "Solution implemented and verified." }),
+    }).catch((e) => {
       if (targetTicket) syncToBackend('PUT', `/${ticketId}`, targetTicket);
-    }
+    });
 
     return targetTicket;
   },
@@ -779,26 +773,6 @@ export const ticketApi = {
     const timeStr = `Today · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     const deadline = new Date(Date.now() + 24 * 3600 * 1000);
     const deadlineStr = `Tomorrow · ${deadline.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-    // Sync reopen to backend using dedicated endpoint first
-    try {
-      const res = await fetch(apiUrl(`/api/tickets/${ticketId}/reopen`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userName, userRole, reason }),
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        if (errData.error) {
-          throw new Error(errData.error);
-        }
-      }
-    } catch (e) {
-      if (e.message?.includes('expired') || e.message?.includes('closure')) {
-        throw e;
-      }
-      console.warn('[reopen] Backend sync warning:', e.message);
-    }
 
     const updated = list.map((t) => {
       if (t.id === ticketId) {
@@ -841,6 +815,13 @@ export const ticketApi = {
 
     const targetTicket = updated.find((t) => t.id === ticketId);
     saveStoredTickets(updated);
+
+    // Sync reopen to backend asynchronously (non-blocking)
+    fetch(apiUrl(`/api/tickets/${ticketId}/reopen`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userName, userRole, reason }),
+    }).catch((e) => console.warn('[reopen] Backend sync warning:', e.message));
 
     // Create system notification for all relevant users
     try {
@@ -899,31 +880,29 @@ export const ticketApi = {
     const targetTicket = updated.find((t) => t.id === ticketId);
     saveStoredTickets(updated);
 
-    // Call dedicated backend messages endpoint to send real email through Centralized Support Email
-    try {
-      const allUsers = getStoredUsers();
-      const currentU = allUsers.find((u) => u.name === userName || (u.email && u.email.toLowerCase() === userName.toLowerCase()));
-      let resolvedAuthorEmail = currentU?.email;
-      if (!resolvedAuthorEmail) {
-        try {
-          const authUser = JSON.parse(sessionStorage.getItem('authUser') || '{}');
-          if (authUser?.email) resolvedAuthorEmail = authUser.email;
-        } catch (e) {}
-      }
-
-      await fetch(apiUrl(`/api/tickets/${ticketId}/messages`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          author: userName,
-          role: userRole,
-          text,
-          authorEmail: resolvedAuthorEmail,
-        }),
-      });
-    } catch (e) {
-      if (targetTicket) syncToBackend('PUT', `/${ticketId}`, targetTicket);
+    // Call dedicated backend messages endpoint asynchronously (non-blocking)
+    const allUsers = getStoredUsers();
+    const currentU = allUsers.find((u) => u.name === userName || (u.email && u.email.toLowerCase() === userName.toLowerCase()));
+    let resolvedAuthorEmail = currentU?.email;
+    if (!resolvedAuthorEmail) {
+      try {
+        const authUser = JSON.parse(sessionStorage.getItem('authUser') || '{}');
+        if (authUser?.email) resolvedAuthorEmail = authUser.email;
+      } catch (e) {}
     }
+
+    fetch(apiUrl(`/api/tickets/${ticketId}/messages`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        author: userName,
+        role: userRole,
+        text,
+        authorEmail: resolvedAuthorEmail,
+      }),
+    }).catch((e) => {
+      if (targetTicket) syncToBackend('PUT', `/${ticketId}`, targetTicket);
+    });
 
     return targetTicket;
   },
