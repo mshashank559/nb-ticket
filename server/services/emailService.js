@@ -381,6 +381,27 @@ class EmailService {
       return null;
     }
 
+    // 0. Anti-Spam / Deduplication Guard: Block duplicate dispatches within 15 seconds
+    const ticketId = ticket.id || ticket._id;
+    const dedupKey = `${templateType}:${ticketId}`;
+    const now = Date.now();
+    if (!this._recentNotificationCache) {
+      this._recentNotificationCache = new Map();
+    }
+    const lastSent = this._recentNotificationCache.get(dedupKey);
+    if (lastSent && (now - lastSent < 15000)) {
+      console.warn(`[EmailService] 🛑 Duplicate notification "${templateType}" blocked for #${ticketId} (${Math.round((now - lastSent) / 1000)}s since last send).`);
+      return null;
+    }
+    this._recentNotificationCache.set(dedupKey, now);
+
+    // Prune stale cache entries
+    if (this._recentNotificationCache.size > 100) {
+      for (const [k, ts] of this._recentNotificationCache.entries()) {
+        if (now - ts > 120000) this._recentNotificationCache.delete(k);
+      }
+    }
+
     const { subject, text, html, webNotice, notificationTitle, notificationDetail, notificationType } = templateFn(
       ticket,
       extraData

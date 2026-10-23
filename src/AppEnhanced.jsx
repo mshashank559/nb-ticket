@@ -3305,6 +3305,8 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
   const [selectedTL, setSelectedTL] = useState('');
   const [showReopenModal, setShowReopenModal] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
+  const [isReopening, setIsReopening] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
   const isPA = role.id === 'process_analyst';
   const isAssigned = Boolean(ticket && ticket.assignee && ticket.assignee !== 'Unassigned' && String(ticket.assignee).trim() !== '');
 
@@ -3415,13 +3417,16 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
 
   const handleConfirmReopen = async (e) => {
     e.preventDefault();
-    if (!reopenReason.trim() || isReopenExpired) return;
+    if (!reopenReason.trim() || isReopenExpired || isReopening) return;
+    setIsReopening(true);
     try {
       await onReopen(ticket.id, currentUser, role.name, reopenReason.trim());
       setShowReopenModal(false);
       setReopenReason('');
     } catch (err) {
       alert(err.message || 'Unable to reopen ticket.');
+    } finally {
+      setIsReopening(false);
     }
   };
 
@@ -3486,13 +3491,22 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
             </>
           )}
 
-          {/* Resolve Ticket Button */}
+          {/* Resolve Ticket Button with double-click protection */}
           {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
             <Button
               icon={ShieldCheck}
-              onClick={() => onResolve(ticket.id, currentUser, role.name)}
+              disabled={isResolving}
+              onClick={async () => {
+                if (isResolving) return;
+                setIsResolving(true);
+                try {
+                  await onResolve(ticket.id, currentUser, role.name);
+                } finally {
+                  setIsResolving(false);
+                }
+              }}
             >
-              Resolve Ticket
+              {isResolving ? 'Resolving...' : 'Resolve Ticket'}
             </Button>
           )}
 
@@ -4013,6 +4027,7 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
                 <Button
                   type="button"
                   variant="secondary"
+                  disabled={isReopening}
                   onClick={() => setShowReopenModal(false)}
                 >
                   Cancel
@@ -4020,9 +4035,16 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
                 <Button
                   type="submit"
                   icon={RotateCcw}
-                  style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', color: '#fff' }}
+                  disabled={isReopening || !reopenReason.trim()}
+                  style={{
+                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                    border: 'none',
+                    color: '#fff',
+                    opacity: isReopening ? 0.7 : 1,
+                    cursor: isReopening ? 'not-allowed' : 'pointer',
+                  }}
                 >
-                  Confirm Reopen
+                  {isReopening ? 'Reopening Ticket...' : 'Confirm Reopen'}
                 </Button>
               </div>
             </form>

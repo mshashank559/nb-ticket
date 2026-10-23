@@ -488,6 +488,16 @@ router.patch('/:id/assign', async (req, res) => {
 router.patch('/:id/resolve', async (req, res) => {
   try {
     const { userName, userRole, notes } = req.body;
+
+    const existingTicket = await Ticket.findOne({ id: req.params.id });
+    if (!existingTicket) return res.status(404).json({ error: 'Ticket not found' });
+
+    // Anti-duplicate guard: If ticket is already resolved, return existing ticket immediately
+    if (existingTicket.status === 'Resolved') {
+      console.log(`[Ticket Resolve Guard] #${existingTicket.id} is already Resolved. Ignoring duplicate resolve.`);
+      return res.json(existingTicket);
+    }
+
     const now = new Date();
 
     const newTimelineItem = {
@@ -551,6 +561,12 @@ router.patch('/:id/reopen', async (req, res) => {
 
     const existingTicket = await Ticket.findOne({ id: req.params.id });
     if (!existingTicket) return res.status(404).json({ error: 'Ticket not found' });
+
+    // Anti-duplicate guard: Only Resolved or Closed tickets can be reopened
+    if (existingTicket.status !== 'Resolved' && existingTicket.status !== 'Closed') {
+      console.log(`[Ticket Reopen Guard] #${existingTicket.id} is already in state "${existingTicket.status}". Ignoring duplicate reopen.`);
+      return res.json(existingTicket);
+    }
 
     // 7-DAY REOPEN WINDOW CHECK
     if (existingTicket.status === 'Closed') {
