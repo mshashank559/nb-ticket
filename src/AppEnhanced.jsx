@@ -3693,22 +3693,10 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
     <div className="page page-enter narrow-page">
       <PageHeader
         eyebrow="WORKSPACE / NEW TICKET"
-        title={formType === 'sales' ? 'Create Sales Ticket' : 'Create Marketing Ticket'}
-        subtitle={
-          formType === 'sales'
-            ? 'Structured issue selection for Sales operations using 10 placement topics.'
-            : 'Custom issue report for Marketing operations and cross-team support.'
-        }
+        title="Create Department Ticket"
+        subtitle="Select target department, recipient lead, and issue details to route this ticket."
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
-            {(role.id === 'process_analyst' || role.id === 'lead_tl') && (
-              <Button
-                variant="secondary"
-                onClick={() => setFormType(formType === 'sales' ? 'marketing' : 'sales')}
-              >
-                Switch to {formType === 'sales' ? 'Custom Issue Form' : '10-Topic Placement Form'}
-              </Button>
-            )}
             <Button
               data-testid="create-cancel-button"
               variant="ghost"
@@ -3864,40 +3852,6 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
           </div>
         )}
 
-        {/* Sales TL Assignment Context (Exclusively for Marketing TL -> Sales tickets) */}
-        {formType === 'marketing' && (
-          <div className="form-section">
-            <div className="form-section-heading">
-              <span className="section-number">02</span>
-              <div>
-                <h2>Sales Team Assignment Context</h2>
-                <p>Assign an active Sales Team Lead from the database to handle this placement issue.</p>
-              </div>
-            </div>
-            <div className="form-grid">
-              <label className="span-2">
-                <span>Assign to Sales TL <span style={{ color: 'var(--red)' }}>*</span></span>
-                <SalesTLDropdown
-                  value={selectedSalesTl?.id || ''}
-                  onChange={(tl) => {
-                    setSelectedSalesTl(tl);
-                    setSalesTlEmail(tl?.email || '');
-                  }}
-                  required
-                />
-              </label>
-              <label className="span-2">
-                <span>Sales TL Mail ID</span>
-                <input
-                  readOnly
-                  placeholder="Auto-filled from database user profile"
-                  value={salesTlEmail}
-                  style={{ background: '#f8fafc', cursor: 'not-allowed', color: '#475569' }}
-                />
-              </label>
-            </div>
-          </div>
-        )}
 
         {/* Issue Details */}
         <div className="form-section">
