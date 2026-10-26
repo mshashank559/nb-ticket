@@ -24,6 +24,13 @@ export const roles = [
     description: "Create custom issue sales tickets, resolve assigned tickets, track SLA countdown."
   },
   {
+    id: "lead_tl",
+    name: "Lead TL",
+    team: "Lead Team",
+    defaultUser: "Pooja Hegde",
+    description: "Create lead inquiries, coordinate placement complaints with Marketing & Sales, track 24h SLA."
+  },
+  {
     id: "manager",
     name: "Manager",
     team: "Executive Leadership",
@@ -501,6 +508,14 @@ export const ticketApi = {
       }
     } catch (e) {}
     return getStoredTickets(overrideUser?.email);
+  },
+
+  getInterDepartmentalStats: async () => {
+    try {
+      const res = await fetch(apiUrl('/api/tickets/inter-departmental-stats'));
+      if (res.ok) return await res.json();
+    } catch (e) {}
+    return null;
   },
 
   get: async (id) => {
@@ -1147,4 +1162,126 @@ export const notificationApi = {
     } catch (e) {}
   },
 };
+
+export const initialDepartments = [
+  {
+    id: 'DEP-MKT',
+    name: 'Marketing',
+    slug: 'marketing',
+    roleId: 'marketing_tl',
+    roleName: 'Marketing TL',
+    description: 'Marketing & Candidate interviews',
+    color: '#2563eb',
+    status: 'Active',
+  },
+  {
+    id: 'DEP-SALES',
+    name: 'Sales',
+    slug: 'sales',
+    roleId: 'sales_tl',
+    roleName: 'Sales TL',
+    description: 'Sales & Placement custom issues',
+    color: '#0ea5a4',
+    status: 'Active',
+  },
+  {
+    id: 'DEP-LEAD',
+    name: 'Lead Team',
+    slug: 'lead',
+    roleId: 'lead_tl',
+    roleName: 'Lead TL',
+    description: 'Lead generation & Inbound candidate inquiries',
+    color: '#8b5cf6',
+    status: 'Active',
+  },
+  {
+    id: 'DEP-OPS',
+    name: 'Quality & Operations',
+    slug: 'quality_ops',
+    roleId: 'process_analyst',
+    roleName: 'Process Analyst',
+    description: 'Central review, governance, and SLA dispatch',
+    color: '#f59e0b',
+    status: 'Active',
+  },
+];
+
+const DEPTS_KEY = 'netbounce_depts_v1_live';
+
+export const getStoredDepartments = () => {
+  try {
+    const data = localStorage.getItem(DEPTS_KEY);
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return initialDepartments;
+};
+
+export const saveStoredDepartments = (list) => {
+  try {
+    if (Array.isArray(list)) {
+      localStorage.setItem(DEPTS_KEY, JSON.stringify(list));
+    }
+  } catch (e) {}
+};
+
+export const departmentApi = {
+  list: async () => {
+    try {
+      const res = await fetch(apiUrl('/api/departments'));
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          saveStoredDepartments(data);
+          return data;
+        }
+      }
+    } catch (e) {}
+    return getStoredDepartments();
+  },
+  create: async (dept) => {
+    try {
+      const res = await fetch(apiUrl('/api/departments'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dept),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        const current = getStoredDepartments();
+        saveStoredDepartments([...current, created]);
+        return created;
+      }
+    } catch (e) {}
+    const id = `DEP-${Date.now().toString().slice(-4)}`;
+    const slug = (dept.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const created = {
+      ...dept,
+      id,
+      slug,
+      roleId: `${slug}_tl`,
+      roleName: dept.roleName || `${dept.name} TL`,
+      status: 'Active',
+    };
+    const current = getStoredDepartments();
+    saveStoredDepartments([...current, created]);
+    return created;
+  },
+  delete: async (id) => {
+    try {
+      const res = await fetch(apiUrl(`/api/departments/${id}`), { method: 'DELETE' });
+      if (res.ok) {
+        const current = getStoredDepartments().filter((d) => d.id !== id);
+        saveStoredDepartments(current);
+        return true;
+      }
+    } catch (e) {}
+    const current = getStoredDepartments().filter((d) => d.id !== id);
+    saveStoredDepartments(current);
+    return true;
+  },
+};
+
 

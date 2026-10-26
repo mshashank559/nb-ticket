@@ -28,6 +28,8 @@ const TicketSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String, default: '' },
   team: { type: String, default: 'Marketing' },
+  sourceDepartment: { type: String, default: 'Marketing' },
+  targetDepartment: { type: String, default: 'Marketing' },
   candidate: { type: String, default: '' },
   candidateName: { type: String, default: '' },
   candidatePhone: { type: String, default: '' },

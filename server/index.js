@@ -9,6 +9,7 @@ import userRoutes from './routes/userRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import emailRoutes from './routes/emailRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
+import departmentRoutes from './routes/departmentRoutes.js';
 import { isMobileDevice } from './services/securityEngine.js';
 import { slaScheduler } from './services/slaScheduler.js';
 
@@ -55,6 +56,7 @@ app.use('/api', (req, res, next) => {
 // Routes
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/departments', departmentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/security', securityRoutes);

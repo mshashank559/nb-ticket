@@ -57,6 +57,8 @@ import {
   RotateCcw,
   RefreshCw,
   Lock,
+  Building2,
+  ArrowRightLeft,
 } from 'lucide-react';
 
 import { SecurityBlockedModal } from './components/SecurityBlockedModal';
@@ -84,6 +86,9 @@ import {
   ticketApi,
   userApi,
   notificationApi,
+  departmentApi,
+  getStoredDepartments,
+  initialDepartments,
 } from './services/mockTicketService';
 import './App.css';
 import './login-premium.css';
@@ -172,6 +177,28 @@ export function isTicketForRole(ticket, role, currentUser, usersList = null) {
   // Sales TL and Marketing TL can ONLY access tickets where they are a direct participant
   if (role.id === 'marketing_tl' || role.id === 'sales_tl') {
     return isDirectParticipant;
+  }
+
+  // Lead Team: direct participant OR ticket is for/from Lead Team
+  if (role.id === 'lead_tl') {
+    const isLeadTeamTicket =
+      (ticket.sourceDepartment || '').toLowerCase() === 'lead team' ||
+      (ticket.targetDepartment || '').toLowerCase() === 'lead team' ||
+      (ticket.team || '').toLowerCase() === 'lead team' ||
+      (ticket.targetTeam || '').toLowerCase() === 'lead team';
+    return isDirectParticipant || isLeadTeamTicket;
+  }
+
+  // Dynamic Department Team Lead: direct participant OR ticket is for/from their team
+  if (role.id?.endsWith('_tl')) {
+    const teamName = (role.team || '').toLowerCase();
+    const isMyTeamTicket = teamName && (
+      (ticket.sourceDepartment || '').toLowerCase() === teamName ||
+      (ticket.targetDepartment || '').toLowerCase() === teamName ||
+      (ticket.team || '').toLowerCase() === teamName ||
+      (ticket.targetTeam || '').toLowerCase() === teamName
+    );
+    return isDirectParticipant || Boolean(isMyTeamTicket);
   }
 
   // Manager: strictly reporting hierarchy (their direct reportees' tickets) + escalated to them
@@ -416,6 +443,7 @@ export function Sidebar({ role, setRole, currentUser, tickets = [] }) {
           label: 'Organization',
           items: [
             ['/users', 'User Management', Users],
+            ['/departments', 'Departments', Building2],
           ],
         },
         {
@@ -466,6 +494,33 @@ export function Sidebar({ role, setRole, currentUser, tickets = [] }) {
             ['/dashboard', 'Dashboard', LayoutDashboard],
             ['/live-queue', 'Live Queue', Radio, salesLiveCount],
             ['/tickets', 'Sales Tickets', LifeBuoy],
+            ['/tickets/new', 'Create Ticket', Plus],
+            ['/notifications', 'Notifications', Bell],
+          ],
+        },
+        {
+          label: 'Insights',
+          items: [
+            ['/analytics', 'Analytics', TrendingUp],
+            ['/activity', 'Activity log', FileText],
+          ],
+        },
+        {
+          label: 'Account',
+          items: [['/settings', 'Settings', Settings]],
+        },
+      ];
+    }
+
+    if (role.id === 'lead_tl' || (role.id?.endsWith('_tl') && role.id !== 'marketing_tl' && role.id !== 'sales_tl')) {
+      const deptName = role.name?.replace(/\s*TL$/i, '') || role.team || 'Lead';
+      return [
+        {
+          label: `${deptName} Workspace`,
+          items: [
+            ['/dashboard', 'Dashboard', LayoutDashboard],
+            ['/live-queue', 'Live Queue', Radio, liveCount],
+            ['/tickets', `${deptName} Tickets`, LifeBuoy],
             ['/tickets/new', 'Create Ticket', Plus],
             ['/notifications', 'Notifications', Bell],
           ],
@@ -697,7 +752,7 @@ export function TicketTable({ rows, currentRole, onAssign, onEscalate, onRelax, 
   );
 }
 
-export function Dashboard({ role, currentUser, tickets, loading = false, onAssign, onEscalate, onRelax }) {
+export function Dashboard({ role, currentUser, tickets, departments = [], loading = false, onAssign, onEscalate, onRelax }) {
   const navigate = useNavigate();
 
   const authorizedTickets = useMemo(() => {
@@ -761,6 +816,27 @@ export function Dashboard({ role, currentUser, tickets, loading = false, onAssig
         ['Active Pipeline', String(mktOpen), Zap, 'Your active tickets'],
       ];
     }
+    if (role.id === 'lead_tl') {
+      const leadOpen = list.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed').length;
+      return [
+        ['Lead Tickets', String(total), LifeBuoy, 'Raised by / for Lead Team'],
+        ['Open Inquiries', String(leadOpen), Clock3, 'Pending response / resolution'],
+        ['Resolved', String(resolved), ShieldCheck, 'Closed within committed SLA'],
+        ['SLA Breaches', String(breached), AlertTriangle, 'Escalated to Process Analyst'],
+        ['Active Pipeline', String(leadOpen), Zap, 'Active lead inquiries'],
+      ];
+    }
+    if (role.id?.endsWith('_tl') && role.id !== 'sales_tl') {
+      const dOpen = list.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed').length;
+      const deptName = role.name?.replace(/\s*TL$/i, '') || 'Department';
+      return [
+        [`${deptName} Tickets`, String(total), LifeBuoy, 'Assigned / Raised by team'],
+        ['Open / In Progress', String(dOpen), Clock3, 'Active in queue'],
+        ['Resolved', String(resolved), ShieldCheck, 'Closed within SLA'],
+        ['Breaches', String(breached), CircleAlert, 'Escalated breaches'],
+        ['Active Pipeline', String(dOpen), Zap, 'Active department tickets'],
+      ];
+    }
     // Sales TL
     const salesOpen = list.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed').length;
     return [
@@ -784,26 +860,37 @@ export function Dashboard({ role, currentUser, tickets, loading = false, onAssig
             ? 'Manager Governance Dashboard: Overseeing escalated queues and SLA breach compliance.'
             : role.id === 'marketing_tl'
             ? 'Marketing TL Dashboard: Track candidate marketing issues and manage resolution SLAs.'
+            : role.id === 'lead_tl'
+            ? 'Lead TL Dashboard: Raise cross-team inquiries for Marketing and Sales and track SLA resolution.'
             : 'Sales TL Dashboard: Create and resolve custom placement & sales operational concerns.'
         }
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
             {role.id === 'process_analyst' && (
-              <Button
-                variant="secondary"
-                icon={Users}
-                onClick={() => navigate('/users')}
-              >
-                User Management
-              </Button>
+              <>
+                <Button
+                  variant="secondary"
+                  icon={Users}
+                  onClick={() => navigate('/users')}
+                >
+                  User Management
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={Building2}
+                  onClick={() => navigate('/departments')}
+                >
+                  Departments
+                </Button>
+              </>
             )}
-            {(role.id === 'marketing_tl' || role.id === 'sales_tl' || role.id === 'process_analyst') && (
+            {(role.id === 'marketing_tl' || role.id === 'sales_tl' || role.id === 'lead_tl' || role.id?.endsWith('_tl') || role.id === 'process_analyst') && (
               <Button
                 data-testid="dashboard-create-ticket-button"
                 icon={Plus}
                 onClick={() => navigate('/tickets/new')}
               >
-                {role.id === 'marketing_tl' ? 'Create Marketing Ticket' : role.id === 'sales_tl' ? 'Create Sales Ticket' : 'Create Ticket'}
+                {role.id === 'marketing_tl' ? 'Create Marketing Ticket' : role.id === 'sales_tl' ? 'Create Sales Ticket' : role.id === 'lead_tl' ? 'Create Lead Ticket' : 'Create Ticket'}
               </Button>
             )}
           </div>
@@ -957,6 +1044,11 @@ export function Dashboard({ role, currentUser, tickets, loading = false, onAssig
           </div>
         </section>
       </div>
+
+      {/* For Manager & Process Analyst: Inter-Departmental Flow Matrix */}
+      {(role.id === 'manager' || role.id === 'process_analyst') && (
+        <InterDepartmentalFlowSection tickets={tickets} departments={departments} />
+      )}
     </div>
   );
 }
@@ -1244,8 +1336,461 @@ export function BreachPage({ tickets, onEscalate, onRelax }) {
   );
 }
 
+// Inter-Departmental Flow Matrix & KPI Heatmap
+export function InterDepartmentalFlowSection({ tickets = [], departments = [] }) {
+  const [filterFrom, setFilterFrom] = useState('ALL');
+  const [filterTo, setFilterTo] = useState('ALL');
+
+  useEffect(() => {
+    ticketApi.getInterDepartmentalStats().catch(() => {});
+  }, [tickets.length]);
+
+  const deptNames = useMemo(() => {
+    const list = departments.map((d) => d.name);
+    if (!list.includes('Marketing')) list.unshift('Marketing');
+    if (!list.includes('Sales')) list.push('Sales');
+    if (!list.includes('Lead Team')) list.push('Lead Team');
+    return Array.from(new Set(list));
+  }, [departments]);
+
+  const pairStats = useMemo(() => {
+    const pairs = [];
+    deptNames.forEach((from) => {
+      deptNames.forEach((to) => {
+        const matching = tickets.filter((t) => {
+          const src = t.sourceDepartment || (t.team === 'Sales' ? 'Sales' : 'Marketing');
+          const tgt = t.targetDepartment || (t.targetTeam === 'Marketing' ? 'Marketing' : (t.team === 'Marketing' ? 'Sales' : 'Marketing'));
+          return src.toLowerCase() === from.toLowerCase() && tgt.toLowerCase() === to.toLowerCase();
+        });
+        if (matching.length > 0 || (from !== to && ['Marketing', 'Sales', 'Lead Team'].includes(from) && ['Marketing', 'Sales', 'Lead Team'].includes(to))) {
+          const total = matching.length;
+          const open = matching.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed').length;
+          const resolved = matching.filter((t) => t.status === 'Resolved' || t.status === 'Closed').length;
+          const breached = matching.filter((t) => t.slaState === 'breached' || t.isEscalated).length;
+          const slaMetPct = total > 0 ? Math.round(((total - breached) / total) * 100) : 100;
+          pairs.push({
+            from,
+            to,
+            total,
+            open,
+            resolved,
+            breached,
+            slaMetPct,
+          });
+        }
+      });
+    });
+    return pairs;
+  }, [tickets, deptNames]);
+
+  const filteredPairs = useMemo(() => {
+    return pairStats.filter((p) => {
+      if (filterFrom !== 'ALL' && p.from !== filterFrom) return false;
+      if (filterTo !== 'ALL' && p.to !== filterTo) return false;
+      return true;
+    });
+  }, [pairStats, filterFrom, filterTo]);
+
+  return (
+    <section className="section-panel" style={{ marginTop: '24px' }}>
+      <div className="section-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+        <div>
+          <p className="eyebrow">CROSS-DEPARTMENT FLOW</p>
+          <h2>Inter-Departmental Flow Matrix & SLA Heatmap</h2>
+          <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0' }}>
+            Monitor ticket exchange volumes, resolution rates, and SLA compliance between departments.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>From:</span>
+            <select
+              value={filterFrom}
+              onChange={(e) => setFilterFrom(e.target.value)}
+              style={{ fontSize: '12px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white' }}
+            >
+              <option value="ALL">All Sources</option>
+              {deptNames.map((d) => <option key={`from-${d}`} value={d}>{d}</option>)}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>To:</span>
+            <select
+              value={filterTo}
+              onChange={(e) => setFilterTo(e.target.value)}
+              style={{ fontSize: '12px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white' }}
+            >
+              <option value="ALL">All Targets</option>
+              {deptNames.map((d) => <option key={`to-${d}`} value={d}>{d}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px', marginBottom: '8px' }}>
+        {filteredPairs.map((pair) => {
+          const isBreachedHigh = pair.breached > 0;
+          return (
+            <div
+              key={`${pair.from}-${pair.to}`}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderLeft: `4px solid ${isBreachedHigh ? '#ef4444' : '#10b981'}`,
+                borderRadius: '8px',
+                padding: '14px 16px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>
+                  <span>{pair.from}</span>
+                  <span style={{ color: '#94a3b8' }}>➔</span>
+                  <span>{pair.to}</span>
+                </div>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  background: pair.slaMetPct >= 90 ? '#ecfdf5' : pair.slaMetPct >= 70 ? '#fffbeb' : '#fef2f2',
+                  color: pair.slaMetPct >= 90 ? '#059669' : pair.slaMetPct >= 70 ? '#d97706' : '#dc2626',
+                }}>
+                  {pair.slaMetPct}% SLA Met
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', textAlign: 'center', background: '#f8fafc', padding: '10px', borderRadius: '6px' }}>
+                <div>
+                  <span style={{ display: 'block', fontSize: '10px', color: '#64748b' }}>TOTAL</span>
+                  <strong style={{ fontSize: '15px', color: '#0f172a' }}>{pair.total}</strong>
+                </div>
+                <div>
+                  <span style={{ display: 'block', fontSize: '10px', color: '#64748b' }}>OPEN</span>
+                  <strong style={{ fontSize: '15px', color: '#2563eb' }}>{pair.open}</strong>
+                </div>
+                <div>
+                  <span style={{ display: 'block', fontSize: '10px', color: '#64748b' }}>RESOLVED</span>
+                  <strong style={{ fontSize: '15px', color: '#10b981' }}>{pair.resolved}</strong>
+                </div>
+                <div>
+                  <span style={{ display: 'block', fontSize: '10px', color: '#64748b' }}>BREACH</span>
+                  <strong style={{ fontSize: '15px', color: pair.breached > 0 ? '#ef4444' : '#94a3b8' }}>{pair.breached}</strong>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// Department Management Page (Exclusive to Process Analyst / Process Team)
+export function DepartmentManagementPage({ departments = [], onCreateDepartment, onDeleteDepartment, role, currentUser }) {
+  const [showModal, setShowModal] = useState(false);
+  const [name, setName] = useState('');
+  const [roleName, setRoleName] = useState('');
+  const [description, setDescription] = useState('');
+  const [color, setColor] = useState('#8b5cf6');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  const protectedIds = ['DEP-MKT', 'DEP-SALES', 'DEP-OPS'];
+
+  const colorPalette = [
+    { label: 'Purple / Lead', value: '#8b5cf6' },
+    { label: 'Blue / Marketing', value: '#2563eb' },
+    { label: 'Teal / Sales', value: '#0ea5a4' },
+    { label: 'Amber / Ops', value: '#f59e0b' },
+    { label: 'Emerald / Success', value: '#10b981' },
+    { label: 'Rose / Critical', value: '#f43f5e' },
+    { label: 'Indigo / Tech', value: '#6366f1' },
+  ];
+
+  const handleNameChange = (val) => {
+    setName(val);
+    if (!roleName || roleName === `${name} TL`) {
+      setRoleName(val ? `${val} TL` : '');
+    }
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setErrorMsg('Please enter a department name.');
+      return;
+    }
+    setErrorMsg('');
+    try {
+      await onCreateDepartment({
+        name: name.trim(),
+        roleName: (roleName.trim() || `${name.trim()} TL`),
+        description: description.trim() || `${name.trim()} departmental operations and ticketing`,
+        color,
+      });
+      setSuccessMsg(`Department "${name.trim()}" created successfully! Dedicated dashboard and workspace are now active.`);
+      setShowModal(false);
+      setName('');
+      setRoleName('');
+      setDescription('');
+      setTimeout(() => setSuccessMsg(''), 5000);
+    } catch (err) {
+      setErrorMsg('Failed to create department.');
+    }
+  };
+
+  const handleDelete = async (dept) => {
+    if (protectedIds.includes(dept.id)) {
+      alert(`Core department "${dept.name}" cannot be deleted as it is vital to system workflows.`);
+      return;
+    }
+    if (window.confirm(`Are you sure you want to delete the "${dept.name}" department? Users assigned to this department should be reassigned.`)) {
+      try {
+        await onDeleteDepartment(dept.id);
+        setSuccessMsg(`Department "${dept.name}" deleted.`);
+        setTimeout(() => setSuccessMsg(''), 4000);
+      } catch (err) {
+        alert('Failed to delete department.');
+      }
+    }
+  };
+
+  return (
+    <div className="page page-enter">
+      <PageHeader
+        eyebrow="ORGANIZATION / GOVERNANCE"
+        title="Department Management"
+        subtitle="Create and govern enterprise departments. Creating a department automatically provisions a ready dashboard and workspace."
+        action={
+          role.id === 'process_analyst' && (
+            <Button icon={Plus} onClick={() => setShowModal(true)}>
+              Create Department
+            </Button>
+          )
+        }
+      />
+
+      {successMsg && (
+        <div style={{ background: '#ecfdf5', border: '1px solid #10b981', color: '#065f46', padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <CheckCircle2 size={18} color="#10b981" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
+      {/* KPI summaries */}
+      <div className="metrics-grid" style={{ marginBottom: '24px' }}>
+        <div className="metric-card">
+          <div className="metric-icon" style={{ background: '#ede9fe', color: '#7c3aed' }}><Building2 size={18} /></div>
+          <div className="metric-label">Total Departments</div>
+          <strong>{departments.length}</strong>
+          <span className="metric-hint">Active enterprise units</span>
+        </div>
+        <div className="metric-card">
+          <div className="metric-icon" style={{ background: '#ecfdf5', color: '#059669' }}><LayoutDashboard size={18} /></div>
+          <div className="metric-label">Active Dashboards</div>
+          <strong>{departments.length} Ready</strong>
+          <span className="metric-hint">Auto-provisioned workspaces</span>
+        </div>
+        <div className="metric-card">
+          <div className="metric-icon" style={{ background: '#eff6ff', color: '#2563eb' }}><Users size={18} /></div>
+          <div className="metric-label">User Management</div>
+          <strong>Assignable</strong>
+          <span className="metric-hint">Select in Add/Edit User</span>
+        </div>
+        <div className="metric-card">
+          <div className="metric-icon" style={{ background: '#fef3c7', color: '#d97706' }}><ShieldCheck size={18} /></div>
+          <div className="metric-label">Governance</div>
+          <strong>Process Analyst</strong>
+          <span className="metric-hint">Restricted access control</span>
+        </div>
+      </div>
+
+      <div className="section-panel">
+        <div className="section-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div>
+            <p className="eyebrow">ENTERPRISE STRUCTURE</p>
+            <h2>Configured Departments & Workspaces</h2>
+          </div>
+          <span style={{ fontSize: '12px', color: '#64748b' }}>Showing {departments.length} active teams</span>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '12px', textTransform: 'uppercase' }}>
+                <th style={{ padding: '12px 16px' }}>Department</th>
+                <th style={{ padding: '12px 16px' }}>Role / Workspace</th>
+                <th style={{ padding: '12px 16px' }}>Description</th>
+                <th style={{ padding: '12px 16px' }}>Dashboard Status</th>
+                <th style={{ padding: '12px 16px' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {departments.map((dept) => {
+                const isCore = protectedIds.includes(dept.id);
+                return (
+                  <tr key={dept.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: dept.color || '#3b82f6', display: 'inline-block' }} />
+                        <div>
+                          <strong style={{ display: 'block', color: '#1e293b', fontSize: '14px' }}>{dept.name}</strong>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>ID: {dept.id}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <span style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', color: '#334155' }}>
+                        {dept.roleName || `${dept.name} TL`} ({dept.roleId || `${dept.slug}_tl`})
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 16px', color: '#475569', fontSize: '13px' }}>
+                      {dept.description || 'Enterprise team operations'}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '3px 9px', borderRadius: '12px', fontSize: '11px', fontWeight: '600' }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+                        Dashboard Ready
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      {isCore ? (
+                        <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>Protected Core Team</span>
+                      ) : (
+                        <button
+                          onClick={() => handleDelete(dept)}
+                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}
+                          title="Delete Department"
+                        >
+                          <Trash2 size={15} />
+                          <span>Delete</span>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal */}
+      {showModal && createPortal(
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-dialog" style={{ maxWidth: '520px', width: '100%', borderRadius: '16px', padding: 0, overflow: 'hidden' }}>
+            <div className="modal-header" style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#ede9fe', color: '#7c3aed', display: 'grid', placeItems: 'center' }}>
+                  <Building2 size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Create New Department</h3>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Provision a new enterprise team, workspace & dashboard</p>
+                </div>
+              </div>
+              <button onClick={() => setShowModal(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={18} /></button>
+            </div>
+
+            <form onSubmit={handleCreate}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '20px 24px' }}>
+                {errorMsg && (
+                  <div style={{ background: '#fef2f2', border: '1px solid #ef4444', color: '#991b1b', padding: '10px 14px', borderRadius: '6px', fontSize: '12px' }}>
+                    {errorMsg}
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+                    Department Name <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Lead Team, Retention, Finance, HR Ops"
+                    value={name}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+                    Role / Team Lead Title
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Lead TL, Retention Lead"
+                    value={roleName}
+                    onChange={(e) => setRoleName(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+                  <small style={{ color: '#64748b', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                    This role will be available in User Management to grant credentials.
+                  </small>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+                    Department Description
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Brief summary of what this department handles..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box', resize: 'vertical' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+                    Accent Theme Color
+                  </label>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    {colorPalette.map((p) => (
+                      <button
+                        type="button"
+                        key={p.value}
+                        onClick={() => setColor(p.value)}
+                        style={{
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '50%',
+                          background: p.value,
+                          border: color === p.value ? '3px solid #0f172a' : '2px solid white',
+                          outline: color === p.value ? '2px solid #3b82f6' : 'none',
+                          cursor: 'pointer',
+                        }}
+                        title={p.label}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', fontSize: '12px', color: '#475569' }}>
+                  <strong>Dashboard Auto-Provisioning:</strong> Once created, a full dashboard with KPIs (Total tickets, Open, Resolved, Breaches) and workspace navigation is instantly activated for this team.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
+                <Button type="submit" icon={Plus}>Create Department & Dashboard</Button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 // User Management Page (As requested for Process Analyst)
-export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser, onSwitchUser, role, currentUser }) {
+export function UserManagementPage({ users, departments = [], onAddUser, onDeleteUser, onEditUser, onSwitchUser, role, currentUser }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -1371,15 +1916,20 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
       setEditManagerName('');
       setEditManagerEmail('');
       if (val === 'sales_tl') setEditDepartment('Sales & Placement');
+      else if (val === 'lead_tl') setEditDepartment('Lead Team');
       else if (val === 'process_analyst') setEditDepartment('Quality & Operations');
-      else setEditDepartment('Executive Leadership');
+      else if (val === 'manager') setEditDepartment('Executive Leadership');
+      else {
+        const match = departments.find((d) => d.roleId === val || `${d.slug}_tl` === val);
+        if (match) setEditDepartment(match.name);
+      }
     }
   };
 
   const handleEditSubmit = (e) => {
     e.preventDefault();
     if (!editName || !editEmail) return;
-    const roleObj = roles.find((r) => r.id === editRoleId) || roles[1];
+    const roleObj = roles.find((r) => r.id === editRoleId) || roles.find((r) => r.id === 'sales_tl') || { name: 'Team Lead' };
     const isMkt = editRoleId === 'marketing_tl';
     const updated = {
       ...editUser,
@@ -1407,8 +1957,13 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
       setManagerName('');
       setManagerEmail('');
       if (val === 'sales_tl') setDepartment('Sales & Placement');
+      else if (val === 'lead_tl') setDepartment('Lead Team');
       else if (val === 'process_analyst') setDepartment('Quality & Operations');
-      else setDepartment('Executive Leadership');
+      else if (val === 'manager') setDepartment('Executive Leadership');
+      else {
+        const match = departments.find((d) => d.roleId === val || `${d.slug}_tl` === val);
+        if (match) setDepartment(match.name);
+      }
     }
   };
 
@@ -2019,8 +2574,16 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
                   >
                     <option value="marketing_tl">Marketing TL</option>
                     <option value="sales_tl">Sales TL</option>
+                    <option value="lead_tl">Lead TL (Lead Team)</option>
                     <option value="process_analyst">Process Analyst</option>
                     <option value="manager">Manager</option>
+                    {departments
+                      .filter((d) => !['DEP-MKT', 'DEP-SALES', 'DEP-OPS', 'DEP-LEAD'].includes(d.id))
+                      .map((d) => (
+                        <option key={d.id} value={d.roleId || `${d.slug}_tl`}>
+                          {d.roleName || `${d.name} TL`}
+                        </option>
+                      ))}
                   </select>
                 </label>
                 <label className="span-2" style={{ color: '#64748b', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -2034,8 +2597,14 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
                   >
                     <option value="Marketing & Lead Gen">Marketing &amp; Lead Gen</option>
                     <option value="Sales & Placement">Sales &amp; Placement</option>
+                    <option value="Lead Team">Lead Team</option>
                     <option value="Quality & Operations">Quality &amp; Operations</option>
                     <option value="Executive Leadership">Executive Leadership</option>
+                    {departments
+                      .filter((d) => !['DEP-MKT', 'DEP-SALES', 'DEP-OPS', 'DEP-LEAD'].includes(d.id))
+                      .map((d) => (
+                        <option key={d.id} value={d.name}>{d.name}</option>
+                      ))}
                   </select>
                 </label>
                 {editRoleId === 'marketing_tl' && (
@@ -2140,8 +2709,16 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
                   <select value={roleId} onChange={handleRoleChange}>
                     <option value="marketing_tl">Marketing TL</option>
                     <option value="sales_tl">Sales TL</option>
+                    <option value="lead_tl">Lead TL (Lead Team)</option>
                     <option value="process_analyst">Process Analyst</option>
                     <option value="manager">Manager</option>
+                    {departments
+                      .filter((d) => !['DEP-MKT', 'DEP-SALES', 'DEP-OPS', 'DEP-LEAD'].includes(d.id))
+                      .map((d) => (
+                        <option key={d.id} value={d.roleId || `${d.slug}_tl`}>
+                          {d.roleName || `${d.name} TL`}
+                        </option>
+                      ))}
                   </select>
                 </label>
                 <label>
@@ -2149,8 +2726,14 @@ export function UserManagementPage({ users, onAddUser, onDeleteUser, onEditUser,
                   <select value={department} onChange={(e) => setDepartment(e.target.value)}>
                     <option value="Marketing & Lead Gen">Marketing & Lead Gen</option>
                     <option value="Sales & Placement">Sales & Placement</option>
+                    <option value="Lead Team">Lead Team</option>
                     <option value="Quality & Operations">Quality & Operations</option>
                     <option value="Executive Leadership">Executive Leadership</option>
+                    {departments
+                      .filter((d) => !['DEP-MKT', 'DEP-SALES', 'DEP-OPS', 'DEP-LEAD'].includes(d.id))
+                      .map((d) => (
+                        <option key={d.id} value={d.name}>{d.name}</option>
+                      ))}
                   </select>
                 </label>
                 {roleId === 'marketing_tl' && (
@@ -2794,8 +3377,30 @@ function SalesTLDropdown({ value, onChange, required }) {
 }
 
 // Create Ticket Component - strictly adhering to Section 4 (Marketing) vs Section 8 (Sales)
-export function CreateTicket({ role, currentUser, onCreateTicket }) {
+export function CreateTicket({ role, currentUser, departments = [], onCreateTicket }) {
   const navigate = useNavigate();
+
+  const availableDepts = useMemo(() => {
+    const list = departments && departments.length > 0 ? departments.map(d => d.name) : ['Marketing', 'Sales', 'Lead Team', 'Quality & Operations'];
+    if (!list.includes('Marketing')) list.unshift('Marketing');
+    if (!list.includes('Sales')) list.push('Sales');
+    if (!list.includes('Lead Team')) list.push('Lead Team');
+    return Array.from(new Set(list));
+  }, [departments]);
+
+  const [sourceDepartment, setSourceDepartment] = useState(() => {
+    if (role.id === 'marketing_tl') return 'Marketing';
+    if (role.id === 'sales_tl') return 'Sales';
+    if (role.id === 'lead_tl') return 'Lead Team';
+    return role.team || 'Marketing';
+  });
+
+  const [targetDepartment, setTargetDepartment] = useState(() => {
+    if (role.id === 'marketing_tl') return 'Sales';
+    if (role.id === 'sales_tl') return 'Marketing';
+    if (role.id === 'lead_tl') return 'Sales';
+    return 'Sales';
+  });
 
   // 'sales' = Structured 10-topic selection (Sales TL)
   // 'marketing' = Custom free-text issue input (Marketing TL)
@@ -2906,7 +3511,7 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
     const isSales = formType === 'sales';
 
     // Validation for Marketing TL -> Sales ticket: must select a Sales TL
-    if (!isSales && !selectedSalesTl?.id) {
+    if (role.id === 'marketing_tl' && targetDepartment === 'Sales' && !isSales && !selectedSalesTl?.id) {
       alert('Please select an active Sales TL to assign this ticket.');
       return;
     }
@@ -2933,10 +3538,12 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
       candidate: candidateName,
       email: candidateEmail,
       phone: candidatePhone,
-      team: isSales ? 'Sales' : 'Marketing',
-      targetTeam: isSales ? 'Marketing' : 'Sales',
+      sourceDepartment: sourceDepartment || (isSales ? 'Sales' : 'Marketing'),
+      targetDepartment: targetDepartment || (isSales ? 'Marketing' : 'Sales'),
+      team: sourceDepartment || (isSales ? 'Sales' : 'Marketing'),
+      targetTeam: targetDepartment || (isSales ? 'Marketing' : 'Sales'),
       subTeam: isSales ? 'Placement Ops' : 'Inbound Marketing',
-      creatorRole: isSales ? 'sales_tl' : 'marketing_tl',
+      creatorRole: role.id || (isSales ? 'sales_tl' : 'marketing_tl'),
       createdBy: currentUser,
       creatorName: currentUser,
       creatorEmail: currentUserEmail,
@@ -2982,12 +3589,12 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
         }
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
-            {role.id === 'process_analyst' && (
+            {(role.id === 'process_analyst' || role.id === 'lead_tl') && (
               <Button
                 variant="secondary"
                 onClick={() => setFormType(formType === 'sales' ? 'marketing' : 'sales')}
               >
-                Switch to {formType === 'sales' ? 'Marketing Form' : 'Sales Form'}
+                Switch to {formType === 'sales' ? 'Custom Issue Form' : '10-Topic Placement Form'}
               </Button>
             )}
             <Button
@@ -3002,6 +3609,42 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
       />
 
       <form className="ticket-form" onSubmit={handleSubmit}>
+        {/* Departmental Routing: From & To */}
+        <div className="form-section">
+          <div className="form-section-heading">
+            <span className="section-number">00</span>
+            <div>
+              <h2>Departmental Routing</h2>
+              <p>Select raising department and target team responsible for resolving the ticket.</p>
+            </div>
+          </div>
+          <div className="form-grid">
+            <label>
+              <span>Source Department (From) <span style={{ color: 'var(--red)' }}>*</span></span>
+              <select
+                value={sourceDepartment}
+                onChange={(e) => setSourceDepartment(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white' }}
+              >
+                {availableDepts.map((d) => (
+                  <option key={`src-${d}`} value={d}>{d}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Target Department (To) <span style={{ color: 'var(--red)' }}>*</span></span>
+              <select
+                value={targetDepartment}
+                onChange={(e) => setTargetDepartment(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white' }}
+              >
+                {availableDepts.map((d) => (
+                  <option key={`tgt-${d}`} value={d}>{d}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
         {/* Candidate Information */}
         <div className="form-section">
           <div className="form-section-heading">
@@ -4223,20 +4866,23 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
   );
 }
 
-export function Analytics({ tickets = [] }) {
+export function Analytics({ tickets = [], departments = [] }) {
   const currentTickets = Array.isArray(tickets) ? tickets : (getStoredTickets() || []);
   const total = currentTickets.length;
-  const mktCount = currentTickets.filter((t) => t.team === 'Marketing' || t.creatorRole === 'marketing_tl').length;
-  const salesCount = currentTickets.filter((t) => t.team === 'Sales' || t.creatorRole === 'sales_tl').length;
-  const otherCount = Math.max(0, total - mktCount - salesCount);
+  const mktCount = currentTickets.filter((t) => t.team === 'Marketing' || t.creatorRole === 'marketing_tl' || (t.sourceDepartment || '').toLowerCase() === 'marketing').length;
+  const salesCount = currentTickets.filter((t) => t.team === 'Sales' || t.creatorRole === 'sales_tl' || (t.sourceDepartment || '').toLowerCase() === 'sales').length;
+  const leadCount = currentTickets.filter((t) => (t.sourceDepartment || t.team || '').toLowerCase() === 'lead team' || t.creatorRole === 'lead_tl').length;
+  const otherCount = Math.max(0, total - mktCount - salesCount - leadCount);
   const mktPct = total ? Math.round((mktCount / total) * 100) : 0;
   const salesPct = total ? Math.round((salesCount / total) * 100) : 0;
-  const otherPct = total ? Math.max(0, 100 - mktPct - salesPct) : 0;
+  const leadPct = total ? Math.round((leadCount / total) * 100) : 0;
+  const otherPct = total ? Math.max(0, 100 - mktPct - salesPct - leadPct) : 0;
 
   const dynamicTeams = [
     { name: "Marketing", value: mktPct, count: mktCount, color: "#2563eb" },
     { name: "Sales", value: salesPct, count: salesCount, color: "#0ea5a4" },
-    { name: "Quality Ops", value: otherPct, count: otherCount, color: "#f59e0b" },
+    { name: "Lead Team", value: leadPct, count: leadCount, color: "#8b5cf6" },
+    { name: "Quality Ops / Other", value: otherPct, count: otherCount, color: "#f59e0b" },
   ];
 
   const last7Days = useMemo(() => {
@@ -4252,7 +4898,7 @@ export function Analytics({ tickets = [] }) {
       <PageHeader
         eyebrow="INSIGHTS / REPORTING"
         title="Analytics & SLA Governance"
-        subtitle="Operational metrics across Marketing, Sales, and SLA compliance."
+        subtitle="Operational metrics across Marketing, Sales, Lead Team, and Cross-Team SLA compliance."
       />
       <div className="dashboard-grid">
         <section className="section-panel">
@@ -4309,6 +4955,9 @@ export function Analytics({ tickets = [] }) {
           ))}
         </section>
       </div>
+
+      {/* Cross-Department Flow Matrix & Heatmap */}
+      <InterDepartmentalFlowSection tickets={currentTickets} departments={departments} />
     </div>
   );
 }
@@ -4959,6 +5608,7 @@ export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUs
     return getStoredTickets(currentUser);
   });
   const [usersState, setUsersState] = useState(() => getStoredUsers());
+  const [departmentsState, setDepartmentsState] = useState(() => getStoredDepartments());
   const [notifsState, setNotifsState] = useState(() => getStoredNotifications());
   const [shellSecurityBlock, setShellSecurityBlock] = useState(null);
   const [isTicketsLoading, setIsTicketsLoading] = useState(() => {
@@ -4967,6 +5617,14 @@ export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUs
       : getStoredTickets(currentUser);
     return !Array.isArray(cached) || cached.length === 0;
   });
+
+  useEffect(() => {
+    departmentApi.list().then((list) => {
+      if (Array.isArray(list) && list.length > 0) {
+        setDepartmentsState(list);
+      }
+    }).catch(() => {});
+  }, []);
 
   // Periodic Security Schedule & Device Monitor
   useEffect(() => {
@@ -5241,6 +5899,19 @@ export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUs
     setUsersState(updated);
   };
 
+  const handleCreateDepartment = async (deptData) => {
+    const created = await departmentApi.create(deptData);
+    const fresh = await departmentApi.list();
+    setDepartmentsState(fresh);
+    return created;
+  };
+
+  const handleDeleteDepartment = async (deptId) => {
+    await departmentApi.delete(deptId);
+    const fresh = await departmentApi.list();
+    setDepartmentsState(fresh);
+  };
+
   const title = location.pathname.split('/')[1] || 'dashboard';
 
   return (
@@ -5260,6 +5931,8 @@ export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUs
               ? 'SLA Breaches'
               : title === 'users'
               ? 'User Management'
+              : title === 'departments'
+              ? 'Department Management'
               : title.charAt(0).toUpperCase() + title.slice(1)
           }
           currentRole={role}
@@ -5279,6 +5952,7 @@ export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUs
                   role={role}
                   currentUser={currentUser}
                   tickets={ticketsState}
+                  departments={departmentsState}
                   loading={isTicketsLoading}
                   onAssign={handleAssign}
                   onEscalate={handleEscalate}
@@ -5301,6 +5975,7 @@ export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUs
                   key={`${role.id}-${currentUser}`}
                   role={role}
                   currentUser={currentUser}
+                  departments={departmentsState}
                   onCreateTicket={handleCreateTicket}
                 />
               }
@@ -5320,12 +5995,25 @@ export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUs
               element={
                 <UserManagementPage
                   users={usersState}
+                  departments={departmentsState}
                   role={role}
                   currentUser={currentUser}
                   onAddUser={handleAddUser}
                   onDeleteUser={handleDeleteUser}
                   onEditUser={handleEditUser}
                   onSwitchUser={onSwitchUser}
+                />
+              }
+            />
+            <Route
+              path="/departments"
+              element={
+                <DepartmentManagementPage
+                  departments={departmentsState}
+                  onCreateDepartment={handleCreateDepartment}
+                  onDeleteDepartment={handleDeleteDepartment}
+                  role={role}
+                  currentUser={currentUser}
                 />
               }
             />
@@ -5352,7 +6040,7 @@ export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUs
                 />
               }
             />
-            <Route path="/analytics" element={<Analytics tickets={ticketsState} />} />
+            <Route path="/analytics" element={<Analytics tickets={ticketsState} departments={departmentsState} />} />
             <Route
               path="/notifications"
               element={
