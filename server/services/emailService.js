@@ -106,9 +106,7 @@ class EmailService {
     paEmails.forEach((em) => recipients.add(em));
 
     // ── 2. TICKET RAISER — the specific person who created this ticket ──
-    const assigneeEmailLower = (ticket.assigneeEmail || ticket.marketingTlEmail || '').toLowerCase().trim();
-
-    if (ticket.creatorEmail && ticket.creatorEmail.includes('@') && ticket.creatorEmail.toLowerCase().trim() !== assigneeEmailLower) {
+    if (ticket.creatorEmail && ticket.creatorEmail.includes('@')) {
       recipients.add(ticket.creatorEmail.trim());
     }
 
@@ -117,37 +115,36 @@ class EmailService {
       const creatorEmails = await this.resolveUserEmails({
         name: { $regex: new RegExp(`^${raiserName}$`, 'i') },
       });
-      creatorEmails.forEach((em) => {
-        if (em.toLowerCase().trim() !== assigneeEmailLower) {
-          recipients.add(em.trim());
-        }
-      });
+      creatorEmails.forEach((em) => recipients.add(em.trim()));
     }
 
-    if (ticket.salesTlEmail && ticket.salesTlEmail.includes('@') && ticket.salesTlEmail.toLowerCase().trim() !== assigneeEmailLower) {
+    if (ticket.salesTlEmail && ticket.salesTlEmail.includes('@')) {
       recipients.add(ticket.salesTlEmail.trim());
     }
 
-    if (ticket.salesPoc && ticket.salesPoc.includes('@') && ticket.salesPoc.toLowerCase().trim() !== assigneeEmailLower) {
+    if (ticket.salesPoc && ticket.salesPoc.includes('@')) {
       recipients.add(ticket.salesPoc.trim());
     }
 
-    // ── 3. SPECIFIC ASSIGNED TL — ONLY the one person assigned to this ticket ──
-    // Priority: assigneeId DB lookup > stored assigneeEmail > stored marketingTlEmail > assignee name DB lookup
-    // We do NOT look up all users with assigneeRole — only the exact assigned person.
-    const assigneeEvents = ['Assigned', 'Reminder', 'Re-Opened', 'Resolved', 'Closed', 'Escalated', 'Extension', 'Breach', 'Reply', 'New'];
+    // ── 3. SPECIFIC ASSIGNED TL / DEPARTMENT LEAD — ONLY the assigned person ──
+    // Priority: assigneeId DB lookup > targetLeadEmail > stored assigneeEmail > stored marketingTlEmail > assignee name DB lookup
+    const assigneeEvents = ['Created', 'Assigned', 'Reminder', 'Re-Opened', 'Resolved', 'Closed', 'Escalated', 'Extension', 'Breach', 'Reply', 'New'];
     if (assigneeEvents.includes(eventType) || eventType === 'Reply') {
-      // 3a. Resolve by stable assigneeId or targetSalesTlId directly from User Management database
-      const targetUserId = ticket.assigneeId || ticket.targetSalesTlId;
+      // 3a. Resolve by targetLeadId, assigneeId or targetSalesTlId directly from User Management database
+      const targetUserId = ticket.targetLeadId || ticket.assigneeId || ticket.targetSalesTlId;
       if (targetUserId) {
         try {
           const u = await User.findOne({ id: targetUserId });
           if (u?.email && u.email.includes('@')) {
-            recipients.add(u.email);
+            recipients.add(u.email.trim());
           }
         } catch (e) {}
       }
-      // 3b. If assigneeEmail is stored directly on ticket
+      // 3b. If targetLeadEmail is stored directly on ticket
+      if (ticket.targetLeadEmail && ticket.targetLeadEmail.includes('@')) {
+        recipients.add(ticket.targetLeadEmail.trim());
+      }
+      // 3c. If assigneeEmail is stored directly on ticket
       if (ticket.assigneeEmail && ticket.assigneeEmail.includes('@')) {
         recipients.add(ticket.assigneeEmail);
       }
