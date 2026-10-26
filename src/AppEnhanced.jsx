@@ -1053,10 +1053,20 @@ export function Dashboard({ role, currentUser, tickets, departments = [], loadin
   );
 }
 
-export function TicketsPage({ routeFilter, role, currentUser, tickets, onDeleteTicket }) {
+export function TicketsPage({ routeFilter, role, currentUser, tickets, departments = [], onDeleteTicket }) {
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState('');
   const [status, setStatus] = useState(slugs[routeFilter] || 'All statuses');
+  const [filterFrom, setFilterFrom] = useState('ALL');
+  const [filterTo, setFilterTo] = useState('ALL');
+
+  const deptNames = useMemo(() => {
+    const list = departments && departments.length > 0 ? departments.map((d) => d.name) : ['Marketing', 'Sales', 'Lead Team', 'Quality & Operations'];
+    if (!list.includes('Marketing')) list.unshift('Marketing');
+    if (!list.includes('Sales')) list.push('Sales');
+    if (!list.includes('Lead Team')) list.push('Lead Team');
+    return Array.from(new Set(list));
+  }, [departments]);
 
   const visible = useMemo(() => {
     let list = tickets;
@@ -1074,14 +1084,34 @@ export function TicketsPage({ routeFilter, role, currentUser, tickets, onDeleteT
       list = list.filter((t) => t.status !== 'Closed');
     }
 
-    const filtered = list.filter(
-      (t) =>
-        (!localSearch ||
-          `${t.id} ${t.title} ${t.candidate} ${t.email} ${t.category} ${t.assignee} ${t.recruiter || ''}`
-            .toLowerCase()
-            .includes(localSearch.toLowerCase())) &&
-        (status === 'All statuses' || t.status === status)
-    );
+    const filtered = list.filter((t) => {
+      // 1. Text Search
+      if (localSearch) {
+        const textMatch = `${t.id} ${t.title} ${t.candidate} ${t.email} ${t.category} ${t.assignee} ${t.recruiter || ''} ${t.sourceDepartment || ''} ${t.targetDepartment || ''} ${t.team || ''}`
+          .toLowerCase()
+          .includes(localSearch.toLowerCase());
+        if (!textMatch) return false;
+      }
+
+      // 2. Status
+      if (status !== 'All statuses' && t.status !== status) {
+        return false;
+      }
+
+      // 3. Source Department (From) filter
+      if (filterFrom !== 'ALL') {
+        const srcDept = (t.sourceDepartment || (t.team === 'Sales' ? 'Sales' : 'Marketing')).toLowerCase();
+        if (srcDept !== filterFrom.toLowerCase()) return false;
+      }
+
+      // 4. Target Department (To) filter
+      if (filterTo !== 'ALL') {
+        const tgtDept = (t.targetDepartment || (t.targetTeam === 'Marketing' ? 'Marketing' : (t.team === 'Marketing' ? 'Sales' : 'Marketing'))).toLowerCase();
+        if (tgtDept !== filterTo.toLowerCase()) return false;
+      }
+
+      return true;
+    });
 
     // CRITICAL: Newly assigned or created tickets ALWAYS appear at the very TOP of the Live Queue
     return filtered.sort((a, b) => {
@@ -1089,13 +1119,14 @@ export function TicketsPage({ routeFilter, role, currentUser, tickets, onDeleteT
       const timeB = new Date(b.assignedAt || b.updatedAt || b.createdAt || b.createdTimestamp || 0).getTime();
       return timeB - timeA;
     });
-  }, [tickets, role.id, currentUser, routeFilter, localSearch, status]);
+  }, [tickets, role.id, currentUser, routeFilter, localSearch, status, filterFrom, filterTo]);
 
   const pageTitle = useMemo(() => {
     if (routeFilter === 'live') return 'Live Operational Queue';
     if (routeFilter === 'escalated') return 'Escalated Tickets Queue';
     if (role.id === 'marketing_tl') return 'Marketing Tickets';
     if (role.id === 'sales_tl') return 'Sales Tickets';
+    if (role.id === 'lead_tl') return 'Lead Team Inquiries & Tickets';
     if (role.id === 'process_analyst') return 'All Tickets (PA Queue)';
     return 'All Team Tickets';
   }, [role.id, routeFilter]);
@@ -1105,6 +1136,7 @@ export function TicketsPage({ routeFilter, role, currentUser, tickets, onDeleteT
     if (routeFilter === 'escalated') return 'Breached tickets escalated to Management for review and intervention.';
     if (role.id === 'marketing_tl') return 'Manage, track, and resolve candidate marketing operations tickets.';
     if (role.id === 'sales_tl') return 'Placement & interview coordination tickets for the Sales team.';
+    if (role.id === 'lead_tl') return 'Inbound inquiries and cross-team placement complaints for the Lead Team.';
     if (role.id === 'process_analyst') return 'Review incoming tickets, assign TLs to start 24h SLA, and manage breaches.';
     return 'Track, review, and manage operational tickets across teams.';
   }, [role.id, routeFilter]);
@@ -1116,13 +1148,13 @@ export function TicketsPage({ routeFilter, role, currentUser, tickets, onDeleteT
         title={pageTitle}
         subtitle={pageSubtitle}
         action={
-          (role.id === 'marketing_tl' || role.id === 'sales_tl' || role.id === 'process_analyst') && (
+          (role.id === 'marketing_tl' || role.id === 'sales_tl' || role.id === 'lead_tl' || role.id?.endsWith('_tl') || role.id === 'process_analyst') && (
             <Button
               data-testid="tickets-create-button"
               icon={Plus}
               onClick={() => navigate('/tickets/new')}
             >
-              {role.id === 'marketing_tl' ? 'Create Marketing Ticket' : role.id === 'sales_tl' ? 'Create Sales Ticket' : 'Create Ticket'}
+              {role.id === 'marketing_tl' ? 'Create Marketing Ticket' : role.id === 'sales_tl' ? 'Create Sales Ticket' : role.id === 'lead_tl' ? 'Create Lead Ticket' : 'Create Ticket'}
             </Button>
           )
         }
@@ -1147,6 +1179,39 @@ export function TicketsPage({ routeFilter, role, currentUser, tickets, onDeleteT
             <option key={x}>{x}</option>
           ))}
         </select>
+
+        {/* From (Source Department) Filter */}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>From:</span>
+          <select
+            data-testid="tickets-from-filter"
+            value={filterFrom}
+            onChange={(e) => setFilterFrom(e.target.value)}
+            style={{ fontSize: '13px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white' }}
+          >
+            <option value="ALL">All Sources</option>
+            {deptNames.map((d) => (
+              <option key={`from-${d}`} value={d}>{d}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* To (Target Department) Filter */}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>To:</span>
+          <select
+            data-testid="tickets-to-filter"
+            value={filterTo}
+            onChange={(e) => setFilterTo(e.target.value)}
+            style={{ fontSize: '13px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white' }}
+          >
+            <option value="ALL">All Targets</option>
+            {deptNames.map((d) => (
+              <option key={`to-${d}`} value={d}>{d}</option>
+            ))}
+          </select>
+        </div>
+
         <button data-testid="tickets-filter-button" className="button button-secondary">
           <Filter size={16} /> Filters
         </button>
@@ -1158,12 +1223,16 @@ export function TicketsPage({ routeFilter, role, currentUser, tickets, onDeleteT
         <span>Active filters</span>
         <Badge type="filter">All Active Periods</Badge>
         {status !== 'All statuses' && <Badge type="filter">{status}</Badge>}
+        {filterFrom !== 'ALL' && <Badge type="filter">From: {filterFrom}</Badge>}
+        {filterTo !== 'ALL' && <Badge type="filter">To: {filterTo}</Badge>}
         <button
           data-testid="clear-filters-button"
           className="text-button"
           onClick={() => {
             setLocalSearch('');
             setStatus('All statuses');
+            setFilterFrom('ALL');
+            setFilterTo('ALL');
           }}
         >
           Clear all
@@ -5962,11 +6031,11 @@ export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUs
             />
             <Route
               path="/live-queue"
-              element={<TicketsPage key={`${role.id}-${currentUser}-live`} routeFilter="live" role={role} currentUser={currentUser} tickets={ticketsState} onDeleteTicket={handleDeleteTicket} />}
+              element={<TicketsPage key={`${role.id}-${currentUser}-live`} routeFilter="live" role={role} currentUser={currentUser} tickets={ticketsState} departments={departmentsState} onDeleteTicket={handleDeleteTicket} />}
             />
             <Route
               path="/tickets"
-              element={<TicketsPage key={`${role.id}-${currentUser}`} role={role} currentUser={currentUser} tickets={ticketsState} onDeleteTicket={handleDeleteTicket} />}
+              element={<TicketsPage key={`${role.id}-${currentUser}`} role={role} currentUser={currentUser} tickets={ticketsState} departments={departmentsState} onDeleteTicket={handleDeleteTicket} />}
             />
             <Route
               path="/tickets/new"
@@ -6020,7 +6089,7 @@ export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUs
             {Object.keys(slugs).map((key) => (
               <Route
                 path={`/tickets/${key}`}
-                element={<TicketsPage routeFilter={key} role={role} currentUser={currentUser} tickets={ticketsState} onDeleteTicket={handleDeleteTicket} />}
+                element={<TicketsPage routeFilter={key} role={role} currentUser={currentUser} tickets={ticketsState} departments={departmentsState} onDeleteTicket={handleDeleteTicket} />}
                 key={`${key}-${role.id}-${currentUser}`}
               />
             ))}
