@@ -4604,17 +4604,25 @@ export function Login({ onLogin }) {
     }
 
     try {
-      // 1. Fetch directory users from MongoDB / local storage
-      const usersList = await userApi.list();
+      // 1. Resolve user from local stored directory or backend
       const input = email.trim().toLowerCase();
-
-      // 2. Find user by email, user ID (e.g. USR-101), or full name
-      const matched = usersList.find(
+      let usersList = getStoredUsers();
+      let matched = usersList.find(
         (u) =>
           (u.email && u.email.trim().toLowerCase() === input) ||
           (u.id && u.id.trim().toLowerCase() === input) ||
           (u.name && u.name.trim().toLowerCase() === input)
       );
+
+      if (!matched) {
+        usersList = await userApi.list();
+        matched = usersList.find(
+          (u) =>
+            (u.email && u.email.trim().toLowerCase() === input) ||
+            (u.id && u.id.trim().toLowerCase() === input) ||
+            (u.name && u.name.trim().toLowerCase() === input)
+        );
+      }
 
       if (!matched) {
         setLoading(false);
@@ -4670,12 +4678,15 @@ export function Login({ onLogin }) {
         roles.find((r) => r.name.toLowerCase() === (updatedUser.roleName || '').toLowerCase()) ||
         roles[0];
 
-      // Pre-fetch user's authorized tickets before transitioning to dashboard for instant zero-delay rendering
+      // Ultra-fast pre-fetch with 1.5s race guard so login NEVER hangs
       let prefetchedTickets = null;
       try {
-        prefetchedTickets = await ticketApi.list(updatedUser);
+        prefetchedTickets = await Promise.race([
+          ticketApi.list(updatedUser),
+          new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
+        ]);
       } catch (e) {
-        console.warn('Pre-fetch failed on login, falling back to local cache/poll:', e);
+        console.warn('Pre-fetch fallback to local cache:', e);
       }
 
       setLoading(false);
