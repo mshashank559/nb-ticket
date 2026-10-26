@@ -1082,13 +1082,14 @@ export const userApi = {
     const deptStr = String(department || '').toLowerCase();
     return list.filter((u) => {
       if (String(u.status || '').toLowerCase() !== 'active') return false;
+      const uRole = String(u.role || '').toLowerCase();
+      if (uRole === 'manager' || uRole === 'process_analyst') return false;
       const uDept = String(u.department || '').toLowerCase();
       const uTeam = String(u.team || '').toLowerCase();
-      const uRole = String(u.role || '').toLowerCase();
       const uRoleName = String(u.roleName || '').toLowerCase();
+      if (/lead/i.test(deptStr)) return uRole === 'lead_tl' || uRole.includes('bd') || uDept.startsWith('lead') || uRoleName.includes('lead');
       if (/sales/i.test(deptStr)) return uRole === 'sales_tl' || /sales/i.test(uDept) || /sales/i.test(uTeam);
       if (/marketing/i.test(deptStr)) return uRole === 'marketing_tl' || /marketing/i.test(uDept) || /marketing/i.test(uTeam);
-      if (/lead/i.test(deptStr)) return uRole === 'lead_tl' || /lead/i.test(uDept) || /lead/i.test(uTeam);
       return uDept.includes(deptStr) || uTeam.includes(deptStr) || uRoleName.includes(deptStr);
     });
   },

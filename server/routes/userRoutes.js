@@ -215,46 +215,68 @@ router.get('/leads/active', async (req, res) => {
     await ensureManagerMapping();
 
     const deptStr = String(department || '').trim();
-    const isSales = /sales/i.test(deptStr);
-    const isMarketing = /marketing/i.test(deptStr);
-    const isLead = /lead/i.test(deptStr);
+    const isSales = /^sales/i.test(deptStr) || /sales/i.test(deptStr);
+    const isMarketing = /^marketing/i.test(deptStr);
+    const isLead = /^lead/i.test(deptStr) || /lead team/i.test(deptStr) || /bd/i.test(deptStr);
 
     let query = {
       status: { $regex: /^active$/i }
     };
 
-    if (isSales) {
-      query.$or = [
-        { role: { $in: ['sales_tl', 'SALES_TL'] } },
-        { department: { $regex: /sales/i } },
-        { team: { $regex: /sales/i } }
+    if (isLead) {
+      // Strictly Lead Team / BD Team members — never match Managers or Marketing TLs
+      query.$and = [
+        { role: { $nin: ['manager', 'process_analyst'] } },
+        {
+          $or: [
+            { role: { $in: ['lead_tl', 'LEAD_TL', 'bd_tl', 'bd_member', 'lead_member'] } },
+            { department: { $regex: /^lead/i } },
+            { team: { $regex: /^lead/i } },
+            { roleName: { $regex: /(lead tl|bd)/i } },
+          ]
+        }
+      ];
+    } else if (isSales) {
+      query.$and = [
+        { role: { $nin: ['manager', 'process_analyst'] } },
+        {
+          $or: [
+            { role: { $in: ['sales_tl', 'SALES_TL'] } },
+            { department: { $regex: /sales/i } },
+            { team: { $regex: /sales/i } }
+          ]
+        }
       ];
     } else if (isMarketing) {
-      query.$or = [
-        { role: { $in: ['marketing_tl', 'MARKETING_TL'] } },
-        { department: { $regex: /marketing/i } },
-        { team: { $regex: /marketing/i } }
-      ];
-    } else if (isLead) {
-      query.$or = [
-        { role: { $in: ['lead_tl', 'LEAD_TL'] } },
-        { department: { $regex: /lead/i } },
-        { team: { $regex: /lead/i } }
+      query.$and = [
+        { role: { $nin: ['manager', 'process_analyst'] } },
+        {
+          $or: [
+            { role: { $in: ['marketing_tl', 'MARKETING_TL'] } },
+            { department: { $regex: /marketing/i } },
+            { team: { $regex: /marketing/i } }
+          ]
+        }
       ];
     } else if (deptStr) {
       const escaped = deptStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      query.$or = [
-        { department: { $regex: new RegExp(escaped, 'i') } },
-        { team: { $regex: new RegExp(escaped, 'i') } },
-        { roleName: { $regex: new RegExp(escaped, 'i') } }
+      query.$and = [
+        { role: { $nin: ['manager', 'process_analyst'] } },
+        {
+          $or: [
+            { department: { $regex: new RegExp(escaped, 'i') } },
+            { team: { $regex: new RegExp(escaped, 'i') } },
+            { roleName: { $regex: new RegExp(escaped, 'i') } }
+          ]
+        }
       ];
     }
 
     if (mongoose.connection.readyState !== 1) {
-      let filtered = initialSeedUsers.filter(u => String(u.status || '').toLowerCase() === 'active');
-      if (isSales) filtered = filtered.filter(u => (u.role === 'sales_tl' || /sales/i.test(u.department || '')));
+      let filtered = initialSeedUsers.filter(u => String(u.status || '').toLowerCase() === 'active' && u.role !== 'manager' && u.role !== 'process_analyst');
+      if (isLead) filtered = filtered.filter(u => u.role === 'lead_tl' || /lead/i.test(u.department || ''));
+      else if (isSales) filtered = filtered.filter(u => (u.role === 'sales_tl' || /sales/i.test(u.department || '')));
       else if (isMarketing) filtered = filtered.filter(u => (u.role === 'marketing_tl' || /marketing/i.test(u.department || '')));
-      else if (isLead) filtered = filtered.filter(u => (u.role === 'lead_tl' || /lead/i.test(u.department || '')));
       return res.json(filtered);
     }
 

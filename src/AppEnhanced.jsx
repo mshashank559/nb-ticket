@@ -3784,50 +3784,52 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
             )}
           </div>
         </div>
-        {/* Candidate Information */}
-        <div className="form-section">
-          <div className="form-section-heading">
-            <span className="section-number">01</span>
-            <div>
-              <h2>Candidate Information</h2>
-              <p>Primary candidate context required for all placement tickets.</p>
+        {/* Candidate Information - Excluded when target department is Lead Team */}
+        {!/lead/i.test(targetDepartment || '') && (
+          <div className="form-section">
+            <div className="form-section-heading">
+              <span className="section-number">01</span>
+              <div>
+                <h2>Candidate Information</h2>
+                <p>Primary candidate context required for placement tickets.</p>
+              </div>
+            </div>
+            <div className="form-grid">
+              <label>
+                <span>Candidate Name <span style={{ color: 'var(--red)' }}>*</span></span>
+                <input
+                  data-testid="ticket-candidate-name-input"
+                  required={!/lead/i.test(targetDepartment || '')}
+                  placeholder="e.g. Rahul Sharma"
+                  value={candidateName}
+                  onChange={(e) => setCandidateName(e.target.value)}
+                />
+              </label>
+              <label>
+                <span>Candidate Email ID <span style={{ color: 'var(--red)' }}>*</span></span>
+                <input
+                  data-testid="ticket-candidate-email-input"
+                  type="email"
+                  required={!/lead/i.test(targetDepartment || '')}
+                  placeholder="candidate@email.com"
+                  value={candidateEmail}
+                  onChange={(e) => setCandidateEmail(e.target.value)}
+                />
+              </label>
+              <label className="span-2">
+                <span>Candidate Phone Number <span style={{ color: 'var(--red)' }}>*</span></span>
+                <input
+                  data-testid="ticket-candidate-phone-input"
+                  type="tel"
+                  required={!/lead/i.test(targetDepartment || '')}
+                  placeholder="+91 98765 43210"
+                  value={candidatePhone}
+                  onChange={(e) => setCandidatePhone(e.target.value)}
+                />
+              </label>
             </div>
           </div>
-          <div className="form-grid">
-            <label>
-              <span>Candidate Name <span style={{ color: 'var(--red)' }}>*</span></span>
-              <input
-                data-testid="ticket-candidate-name-input"
-                required
-                placeholder="e.g. Rahul Sharma"
-                value={candidateName}
-                onChange={(e) => setCandidateName(e.target.value)}
-              />
-            </label>
-            <label>
-              <span>Candidate Email ID <span style={{ color: 'var(--red)' }}>*</span></span>
-              <input
-                data-testid="ticket-candidate-email-input"
-                type="email"
-                required
-                placeholder="candidate@email.com"
-                value={candidateEmail}
-                onChange={(e) => setCandidateEmail(e.target.value)}
-              />
-            </label>
-            <label className="span-2">
-              <span>Candidate Phone Number <span style={{ color: 'var(--red)' }}>*</span></span>
-              <input
-                data-testid="ticket-candidate-phone-input"
-                type="tel"
-                required
-                placeholder="+91 98765 43210"
-                value={candidatePhone}
-                onChange={(e) => setCandidatePhone(e.target.value)}
-              />
-            </label>
-          </div>
-        </div>
+        )}
 
         {/* Recruiter & Placement Team Context (Optional context fields) */}
         {formType === 'sales' && (
