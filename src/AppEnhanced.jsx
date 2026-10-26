@@ -3174,32 +3174,32 @@ export function UserManagementPage({ users, departments = [], onAddUser, onDelet
   );
 }
 
-// Searchable Dynamic Sales TL Selection Dropdown Component
-function SalesTLDropdown({ value, onChange, required }) {
-  const [salesTls, setSalesTls] = useState([]);
+// Searchable Dynamic Department Lead Selection Dropdown Component
+function DepartmentLeadDropdown({ department = 'Sales', value, onChange, required, placeholder }) {
+  const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const dropdownRef = useRef(null);
 
-  const fetchSalesTLs = async () => {
+  const fetchLeads = async () => {
     setLoading(true);
     setError(null);
     try {
-      const list = await userApi.getActiveSalesTLs();
-      setSalesTls(Array.isArray(list) ? list : []);
+      const list = await userApi.getActiveDepartmentLeads(department);
+      setLeads(Array.isArray(list) ? list : []);
     } catch (err) {
-      console.error('Failed to load Sales TLs:', err);
-      setError('Unable to load Sales TLs. Please try again.');
+      console.error(`Failed to load ${department} Leads:`, err);
+      setError(`Unable to load ${department} Leads. Please try again.`);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSalesTLs();
-  }, []);
+    fetchLeads();
+  }, [department]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -3212,15 +3212,19 @@ function SalesTLDropdown({ value, onChange, required }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const selectedUser = salesTls.find((u) => u.id === value);
+  const selectedUser = leads.find((u) => u.id === value || u.name === value);
 
-  const filtered = salesTls.filter((u) => {
+  const filtered = leads.filter((u) => {
     const q = search.toLowerCase();
     return (
       (u.name || '').toLowerCase().includes(q) ||
       (u.email || '').toLowerCase().includes(q)
     );
   });
+
+  const leadLabel = department.includes('TL') || department.includes('Team')
+    ? `${department} Lead`
+    : `${department} TL`;
 
   return (
     <div ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
@@ -3265,7 +3269,7 @@ function SalesTLDropdown({ value, onChange, required }) {
         {loading ? (
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '13px' }}>
             <RefreshCw size={14} className="spin" />
-            Loading Sales TLs...
+            Loading {leadLabel}s...
           </span>
         ) : selectedUser ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
@@ -3280,7 +3284,7 @@ function SalesTLDropdown({ value, onChange, required }) {
               padding: '1px 6px',
               borderRadius: '4px',
             }}>
-              Sales TL
+              {selectedUser.roleName || selectedUser.role || leadLabel}
             </span>
             <span style={{ fontSize: '12px', color: '#64748b', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
               ({selectedUser.email})
@@ -3288,7 +3292,7 @@ function SalesTLDropdown({ value, onChange, required }) {
           </div>
         ) : (
           <span style={{ color: '#94a3b8', fontSize: '13px' }}>
-            Select Sales TL...
+            {placeholder || `Select ${leadLabel}...`}
           </span>
         )}
         <ChevronDown
@@ -3326,7 +3330,7 @@ function SalesTLDropdown({ value, onChange, required }) {
               <input
                 type="text"
                 autoFocus
-                placeholder="Search Sales TL..."
+                placeholder={`Search ${leadLabel}...`}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 style={{
@@ -3352,7 +3356,7 @@ function SalesTLDropdown({ value, onChange, required }) {
                 </p>
                 <button
                   type="button"
-                  onClick={fetchSalesTLs}
+                  onClick={fetchLeads}
                   style={{
                     background: '#f1f5f9',
                     border: '1px solid #cbd5e1',
@@ -3369,11 +3373,11 @@ function SalesTLDropdown({ value, onChange, required }) {
               </div>
             ) : filtered.length === 0 ? (
               <div style={{ padding: '16px 12px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-                {salesTls.length === 0 ? 'No active Sales TLs available.' : 'No matching Sales TL found.'}
+                {leads.length === 0 ? `No active ${leadLabel}s configured in User Management.` : `No matching ${leadLabel} found.`}
               </div>
             ) : (
               filtered.map((tl) => {
-                const isSelected = tl.id === value;
+                const isSelected = tl.id === value || tl.name === value;
                 return (
                   <div
                     key={tl.id}
@@ -3426,7 +3430,7 @@ function SalesTLDropdown({ value, onChange, required }) {
                               borderRadius: '4px',
                             }}
                           >
-                            Sales TL
+                            {tl.roleName || tl.role || leadLabel}
                           </span>
                         </div>
                         <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
@@ -3445,6 +3449,11 @@ function SalesTLDropdown({ value, onChange, required }) {
   );
 }
 
+// Backward compatible alias
+function SalesTLDropdown(props) {
+  return <DepartmentLeadDropdown department="Sales" {...props} />;
+}
+
 // Create Ticket Component - strictly adhering to Section 4 (Marketing) vs Section 8 (Sales)
 export function CreateTicket({ role, currentUser, departments = [], onCreateTicket }) {
   const navigate = useNavigate();
@@ -3457,12 +3466,31 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
     return Array.from(new Set(list));
   }, [departments]);
 
-  const [sourceDepartment, setSourceDepartment] = useState(() => {
+  // Candidate Information & Authenticated user identity
+  const authUserStr = sessionStorage.getItem('authUser');
+  let authUserObj = null;
+  try { authUserObj = JSON.parse(authUserStr || '{}'); } catch (e) {}
+  const currentUserEmail = authUserObj?.email || '';
+
+  // Determine user's actual department from their profile/role
+  const userDeptFromProfile = useMemo(() => {
+    if (authUserObj?.department) return authUserObj.department;
+    if (authUserObj?.team) return authUserObj.team;
     if (role.id === 'marketing_tl') return 'Marketing';
     if (role.id === 'sales_tl') return 'Sales';
     if (role.id === 'lead_tl') return 'Lead Team';
-    return role.team || 'Marketing';
-  });
+    if (role.id === 'process_analyst') return 'Quality & Operations';
+    return role.team || 'Lead Team';
+  }, [authUserObj, role]);
+
+  const [sourceDepartment, setSourceDepartment] = useState(userDeptFromProfile);
+
+  // Sync sourceDepartment whenever user profile or role changes
+  useEffect(() => {
+    if (userDeptFromProfile) {
+      setSourceDepartment(userDeptFromProfile);
+    }
+  }, [userDeptFromProfile]);
 
   const [targetDepartment, setTargetDepartment] = useState(() => {
     if (role.id === 'marketing_tl') return 'Sales';
@@ -3471,7 +3499,18 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
     return 'Sales';
   });
 
-  // 'sales' = Structured 10-topic selection (Sales TL)
+  // Dynamic Target Department Lead state
+  const [selectedTargetLead, setSelectedTargetLead] = useState(null);
+  const [targetLeadEmail, setTargetLeadEmail] = useState('');
+
+  // When targetDepartment changes, reset selected lead to avoid stale recipients
+  const handleTargetDepartmentChange = (newDept) => {
+    setTargetDepartment(newDept);
+    setSelectedTargetLead(null);
+    setTargetLeadEmail('');
+  };
+
+  // 'sales' = Structured 10-topic selection (Sales TL / standard placement form)
   // 'marketing' = Custom free-text issue input (Marketing TL)
   const [formType, setFormType] = useState(() => (role.id === 'marketing_tl' ? 'marketing' : 'sales'));
 
@@ -3480,17 +3519,11 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
     setFormType(role.id === 'marketing_tl' ? 'marketing' : 'sales');
   }, [role.id]);
 
-  // Candidate Information
-  const authUserStr = sessionStorage.getItem('authUser');
-  let authUserObj = null;
-  try { authUserObj = JSON.parse(authUserStr || '{}'); } catch (e) {}
-  const currentUserEmail = authUserObj?.email || '';
-
   const [candidateName, setCandidateName] = useState('');
   const [candidateEmail, setCandidateEmail] = useState('');
   const [candidatePhone, setCandidatePhone] = useState('');
 
-  // Dynamic Sales TL assignment fields (for Marketing TL form)
+  // Backward compatible dynamic Sales TL assignment fields
   const [selectedSalesTl, setSelectedSalesTl] = useState(null);
   const [salesTlEmail, setSalesTlEmail] = useState('');
 
@@ -3602,6 +3635,13 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
       ? subTopic
       : customIssueTitle;
 
+    // Validation: if a target department has a selected lead or requires a lead
+    const effectiveTargetLead = selectedTargetLead || selectedSalesTl || (recruiter ? { name: recruiter, email: marketingTlEmail } : null);
+    if (!effectiveTargetLead && targetDepartment) {
+      alert(`Please select an active ${targetDepartment} Lead / TL to route this ticket.`);
+      return;
+    }
+
     const newTicketPayload = {
       title: finalTitle,
       candidate: candidateName,
@@ -3621,15 +3661,18 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
       subCategory: finalSubCategory,
       seniorRecruiter: isSales ? seniorRecruiter : '',
       recruiter: isSales ? recruiter : '',
-      // Dynamic Sales TL fields (User Management is source of truth)
-      targetSalesTlId: isSales ? '' : (selectedSalesTl?.id || ''),
-      targetSalesTlName: isSales ? '' : (selectedSalesTl?.name || ''),
-      targetSalesTlEmail: isSales ? '' : (selectedSalesTl?.email || ''),
-      salesTlEmail: isSales ? currentUserEmail : (selectedSalesTl?.email || ''),
-      assignee: isSales ? (recruiter || 'Unassigned') : (selectedSalesTl?.name || 'Unassigned'),
-      assigneeId: isSales ? '' : (selectedSalesTl?.id || ''),
-      assigneeEmail: isSales ? '' : (selectedSalesTl?.email || ''),
-      assigneeRole: isSales ? (recruiter ? 'marketing_tl' : '') : (selectedSalesTl ? 'sales_tl' : ''),
+      // Dynamic Target Lead & recipient fields
+      targetLeadId: effectiveTargetLead?.id || '',
+      targetLeadName: effectiveTargetLead?.name || '',
+      targetLeadEmail: effectiveTargetLead?.email || '',
+      targetSalesTlId: effectiveTargetLead?.id || selectedSalesTl?.id || '',
+      targetSalesTlName: effectiveTargetLead?.name || selectedSalesTl?.name || '',
+      targetSalesTlEmail: effectiveTargetLead?.email || selectedSalesTl?.email || '',
+      salesTlEmail: isSales ? currentUserEmail : (effectiveTargetLead?.email || selectedSalesTl?.email || ''),
+      assignee: effectiveTargetLead?.name || (isSales ? (recruiter || 'Unassigned') : (selectedSalesTl?.name || 'Unassigned')),
+      assigneeId: effectiveTargetLead?.id || (isSales ? '' : (selectedSalesTl?.id || '')),
+      assigneeEmail: effectiveTargetLead?.email || (isSales ? '' : (selectedSalesTl?.email || '')),
+      assigneeRole: effectiveTargetLead?.role || (isSales ? (recruiter ? 'marketing_tl' : '') : (selectedSalesTl ? 'sales_tl' : '')),
       salesRep: isSales ? salesRep : '',
       salesPoc: isSales ? currentUserEmail : '',
       marketingTlEmail: isSales ? (marketingTlEmail || '') : '',
@@ -3688,30 +3731,69 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
             </div>
           </div>
           <div className="form-grid">
+            {/* From Department (Auto-populated & Read-only) */}
             <label>
-              <span>Source Department (From) <span style={{ color: 'var(--red)' }}>*</span></span>
-              <select
+              <span>From Department <span style={{ color: 'var(--red)' }}>*</span></span>
+              <input
+                readOnly
                 value={sourceDepartment}
-                onChange={(e) => setSourceDepartment(e.target.value)}
-                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white' }}
-              >
-                {availableDepts.map((d) => (
-                  <option key={`src-${d}`} value={d}>{d}</option>
-                ))}
-              </select>
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', fontWeight: 600, cursor: 'not-allowed' }}
+              />
             </label>
+
+            {/* Target Department (To) */}
             <label>
-              <span>Target Department (To) <span style={{ color: 'var(--red)' }}>*</span></span>
+              <span>To Department <span style={{ color: 'var(--red)' }}>*</span></span>
               <select
                 value={targetDepartment}
-                onChange={(e) => setTargetDepartment(e.target.value)}
-                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white' }}
+                onChange={(e) => handleTargetDepartmentChange(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', fontWeight: 600 }}
               >
                 {availableDepts.map((d) => (
                   <option key={`tgt-${d}`} value={d}>{d}</option>
                 ))}
               </select>
             </label>
+
+            {/* Sender Email (Auto-populated directly below From Department) */}
+            <label>
+              <span>Sender Email</span>
+              <input
+                readOnly
+                placeholder="Auto-populated from profile"
+                value={currentUserEmail}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#64748b', fontSize: '13px', cursor: 'not-allowed' }}
+              />
+            </label>
+
+            {/* Dynamic Target Department Lead (Directly below To Department) */}
+            <label>
+              <span>
+                Select {targetDepartment.includes('TL') || targetDepartment.includes('Team') ? `${targetDepartment} Lead` : `${targetDepartment} TL`} <span style={{ color: 'var(--red)' }}>*</span>
+              </span>
+              <DepartmentLeadDropdown
+                department={targetDepartment}
+                value={selectedTargetLead?.id || ''}
+                placeholder={`Select ${targetDepartment} Lead...`}
+                onChange={(lead) => {
+                  setSelectedTargetLead(lead);
+                  setTargetLeadEmail(lead?.email || '');
+                  // Keep backward compatibility for Sales TL fields
+                  if (targetDepartment === 'Sales') {
+                    setSelectedSalesTl(lead);
+                    setSalesTlEmail(lead?.email || '');
+                  }
+                }}
+                required
+              />
+            </label>
+
+            {/* If lead selected, show their email */}
+            {targetLeadEmail && (
+              <label className="span-2" style={{ marginTop: '-4px' }}>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>Selected Recipient Email: <strong>{targetLeadEmail}</strong></span>
+              </label>
+            )}
           </div>
         </div>
         {/* Candidate Information */}

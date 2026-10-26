@@ -208,6 +208,64 @@ router.get('/sales-tls/active', async (req, res) => {
   }
 });
 
+// GET /api/users/leads/active - Dedicated endpoint to query ACTIVE Team Leads for a given department
+router.get('/leads/active', async (req, res) => {
+  try {
+    const { department } = req.query;
+    await ensureManagerMapping();
+
+    const deptStr = String(department || '').trim();
+    const isSales = /sales/i.test(deptStr);
+    const isMarketing = /marketing/i.test(deptStr);
+    const isLead = /lead/i.test(deptStr);
+
+    let query = {
+      status: { $regex: /^active$/i }
+    };
+
+    if (isSales) {
+      query.$or = [
+        { role: { $in: ['sales_tl', 'SALES_TL'] } },
+        { department: { $regex: /sales/i } },
+        { team: { $regex: /sales/i } }
+      ];
+    } else if (isMarketing) {
+      query.$or = [
+        { role: { $in: ['marketing_tl', 'MARKETING_TL'] } },
+        { department: { $regex: /marketing/i } },
+        { team: { $regex: /marketing/i } }
+      ];
+    } else if (isLead) {
+      query.$or = [
+        { role: { $in: ['lead_tl', 'LEAD_TL'] } },
+        { department: { $regex: /lead/i } },
+        { team: { $regex: /lead/i } }
+      ];
+    } else if (deptStr) {
+      const escaped = deptStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.$or = [
+        { department: { $regex: new RegExp(escaped, 'i') } },
+        { team: { $regex: new RegExp(escaped, 'i') } },
+        { roleName: { $regex: new RegExp(escaped, 'i') } }
+      ];
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      let filtered = initialSeedUsers.filter(u => String(u.status || '').toLowerCase() === 'active');
+      if (isSales) filtered = filtered.filter(u => (u.role === 'sales_tl' || /sales/i.test(u.department || '')));
+      else if (isMarketing) filtered = filtered.filter(u => (u.role === 'marketing_tl' || /marketing/i.test(u.department || '')));
+      else if (isLead) filtered = filtered.filter(u => (u.role === 'lead_tl' || /lead/i.test(u.department || '')));
+      return res.json(filtered);
+    }
+
+    const leads = await User.find(query).sort({ name: 1 });
+    res.json(leads);
+  } catch (error) {
+    console.error('Error fetching department leads:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/users - List all users (Auto-seed if collection empty, supports ?role= & ?status=)
 router.get('/', async (req, res) => {
   try {

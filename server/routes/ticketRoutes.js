@@ -398,33 +398,29 @@ router.post('/', async (req, res) => {
     let targetAssigneeId = req.body.assigneeId || '';
     let targetAssigneeEmail = req.body.assigneeEmail || '';
 
-    let targetSalesTlId = req.body.targetSalesTlId || req.body.selectedSalesTlId || '';
-    let targetSalesTlName = req.body.targetSalesTlName || '';
-    let targetSalesTlEmail = req.body.targetSalesTlEmail || '';
+    let targetSalesTlId = req.body.targetSalesTlId || req.body.selectedSalesTlId || req.body.targetLeadId || '';
+    let targetSalesTlName = req.body.targetSalesTlName || req.body.targetLeadName || '';
+    let targetSalesTlEmail = req.body.targetSalesTlEmail || req.body.targetLeadEmail || '';
 
-    // If Sales TL selection was provided (from Marketing TL or direct assignment):
+    // If target lead / TL selection was provided (from any department routing):
     if (targetSalesTlId) {
-      const stlUser = await User.findOne({
+      const leadUser = await User.findOne({
         id: targetSalesTlId,
-        role: { $in: ['sales_tl', 'SALES_TL'] },
         status: { $regex: /^active$/i },
       });
-      if (!stlUser) {
+      if (!leadUser) {
         return res.status(400).json({
-          error: 'Invalid Sales TL assignment. Selected user does not exist, is not active, or does not have Sales TL role.'
+          error: 'Invalid recipient assignment. Selected department lead does not exist or is not active.'
         });
       }
-      targetSalesTlId = stlUser.id;
-      targetSalesTlName = stlUser.name;
-      targetSalesTlEmail = stlUser.email;
+      targetSalesTlId = leadUser.id;
+      targetSalesTlName = leadUser.name;
+      targetSalesTlEmail = leadUser.email;
 
-      // In the Marketing -> Sales workflow, if assigned directly or intended as assignee:
-      if (targetAssignee === 'Unassigned' || targetAssignee === stlUser.name) {
-        targetAssignee = stlUser.name;
-        targetAssigneeId = stlUser.id;
-        targetAssigneeEmail = stlUser.email;
-        targetAssigneeRole = 'sales_tl';
-      }
+      targetAssignee = leadUser.name;
+      targetAssigneeId = leadUser.id;
+      targetAssigneeEmail = leadUser.email;
+      targetAssigneeRole = leadUser.role;
     }
 
     if (targetAssignee && targetAssignee !== 'Unassigned' && !targetAssigneeRole) {
