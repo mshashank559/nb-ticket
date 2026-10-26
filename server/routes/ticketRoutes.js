@@ -155,6 +155,7 @@ router.get('/', async (req, res) => {
 
     if (mongoose.connection.readyState !== 1) {
       return res.json([]);
+    }
     // Exclude heavy base64 raw attachment data to make payload 99% lighter and load in milliseconds
     const tickets = await Ticket.find({}, { 'attachments.data': 0 }).sort({ updatedAt: -1, createdAt: -1 });
 
