@@ -414,12 +414,23 @@ export const ticketApi = {
       const authUser = authUserStr ? JSON.parse(authUserStr) : null;
       const demoRole = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('demoRole') : null;
       const demoUser = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('demoUser') : null;
-      const headers = {};
-      if (demoRole) headers['x-user-role'] = demoRole;
-      if (demoUser) headers['x-user-name'] = demoUser;
-      if (authUser?.email) headers['x-user-email'] = authUser.email;
 
-      const res = await fetch(apiUrl('/api/tickets'), { headers });
+      const effectiveRole = demoRole || authUser?.role || '';
+      const effectiveName = demoUser || authUser?.name || '';
+      const effectiveEmail = authUser?.email || '';
+
+      const headers = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      };
+      if (effectiveRole) headers['x-user-role'] = effectiveRole;
+      if (effectiveName) headers['x-user-name'] = effectiveName;
+      if (effectiveEmail) headers['x-user-email'] = effectiveEmail;
+
+      const res = await fetch(apiUrl(`/api/tickets?_t=${Date.now()}`), {
+        headers,
+        cache: 'no-store',
+      });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {

@@ -10,20 +10,22 @@ const router = express.Router();
 // Helper to check if requester is authorized to view a ticket
 const isUserAuthorizedForTicket = (ticket, userCtx, allUsers = []) => {
   if (!ticket || !userCtx) return true;
-  const role = userCtx.role || '';
+  const role = (userCtx.role || '').trim().toLowerCase();
   const name = (userCtx.name || '').trim().toLowerCase();
   const email = (userCtx.email || '').trim().toLowerCase();
 
   if (!role && !name && !email) return true;
-  if (role === 'process_analyst' || role === 'admin') return true;
 
   const userDoc = allUsers.find((u) =>
     (name && u.name?.trim().toLowerCase() === name) ||
     (email && u.email?.trim().toLowerCase() === email)
   );
 
-  const effectiveRole = role || userDoc?.role || '';
-  const effectiveEmail = email || userDoc?.email?.toLowerCase() || '';
+  const effectiveRole = (role || userDoc?.role || '').trim().toLowerCase();
+  const effectiveEmail = (email || userDoc?.email || '').trim().toLowerCase();
+
+  // Process Analyst & Admin always see ALL tickets
+  if (effectiveRole === 'process_analyst' || effectiveRole === 'admin') return true;
 
   const tCreator = (ticket.createdBy || ticket.creatorName || '').trim().toLowerCase();
   const tAssignee = (ticket.assignee || '').trim().toLowerCase();
@@ -101,6 +103,10 @@ const calcSLARemaining = (deadline) => {
 // GET /api/tickets - List all tickets (filtered by authorization if user context present)
 router.get('/', async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     if (mongoose.connection.readyState !== 1) {
       return res.json([]);
     }

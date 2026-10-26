@@ -2813,10 +2813,11 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
   // Priority dropdown
   const [priority, setPriority] = useState('High');
 
-  // Sales 2-Level topic selection (10 topics)
+  // Sales 2-Level topic selection (10 topics + Custom)
   const topicKeys = Object.keys(marketingTopics);
   const [mainTopic, setMainTopic] = useState(topicKeys[0]);
   const [subTopic, setSubTopic] = useState(marketingTopics[topicKeys[0]][0]);
+  const [customMainTopic, setCustomMainTopic] = useState('');
 
   // Description & Attachments
   const [description, setDescription] = useState('');
@@ -2828,8 +2829,12 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
   // When mainTopic changes, update subtopic
   const handleMainTopicChange = (newTopic) => {
     setMainTopic(newTopic);
-    const subList = marketingTopics[newTopic] || [];
-    setSubTopic(subList[0] || '');
+    if (newTopic === 'Custom') {
+      setSubTopic('');
+    } else {
+      const subList = marketingTopics[newTopic] || [];
+      setSubTopic(subList[0] || '');
+    }
   };
 
   const handleFileChange = (e) => {
@@ -2864,8 +2869,25 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
       return;
     }
 
+    const isCustomSales = isSales && mainTopic === 'Custom';
+    const finalTitle = isCustomSales
+      ? (customMainTopic.trim() || 'Custom Placement Concern')
+      : isSales
+      ? mainTopic
+      : customIssueTitle;
+    const finalCategory = isCustomSales
+      ? (customMainTopic.trim() || 'Custom Placement Concern')
+      : isSales
+      ? mainTopic
+      : 'Custom Marketing Issue';
+    const finalSubCategory = isCustomSales
+      ? 'Custom Concern'
+      : isSales
+      ? subTopic
+      : customIssueTitle;
+
     const newTicketPayload = {
-      title: isSales ? mainTopic : customIssueTitle,
+      title: finalTitle,
       candidate: candidateName,
       email: candidateEmail,
       phone: candidatePhone,
@@ -2877,8 +2899,8 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
       creatorName: currentUser,
       creatorEmail: currentUserEmail,
       priority,
-      category: isSales ? mainTopic : 'Custom Marketing Issue',
-      subCategory: isSales ? subTopic : customIssueTitle,
+      category: finalCategory,
+      subCategory: finalSubCategory,
       seniorRecruiter: isSales ? seniorRecruiter : '',
       recruiter: isSales ? recruiter : '',
       // Dynamic Sales TL fields (User Management is source of truth)
@@ -3105,25 +3127,38 @@ export function CreateTicket({ role, currentUser, onCreateTicket }) {
                         {topic}
                       </option>
                     ))}
+                    <option value="Custom">Custom</option>
                   </select>
                 </label>
 
-                <label className="span-2">
-                  <span>Select Subtopic <span style={{ color: 'var(--red)' }}>*</span></span>
-                  <select
-                    value={subTopic}
-                    onChange={(e) => setSubTopic(e.target.value)}
-                  >
-                    {(marketingTopics[mainTopic] || []).map((sub) => (
-                      <option key={sub} value={sub}>
-                        {sub}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {mainTopic === 'Custom' ? (
+                  <label className="span-2">
+                    <span>Custom Main Topic / Concern <span style={{ color: 'var(--red)' }}>*</span></span>
+                    <input
+                      required
+                      placeholder="Type your custom concern / main topic here..."
+                      value={customMainTopic}
+                      onChange={(e) => setCustomMainTopic(e.target.value)}
+                    />
+                  </label>
+                ) : (
+                  <label className="span-2">
+                    <span>Select Subtopic <span style={{ color: 'var(--red)' }}>*</span></span>
+                    <select
+                      value={subTopic}
+                      onChange={(e) => setSubTopic(e.target.value)}
+                    >
+                      {(marketingTopics[mainTopic] || []).map((sub) => (
+                        <option key={sub} value={sub}>
+                          {sub}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
 
-                {/* Description appears AFTER subtopic is chosen */}
-                {subTopic && (
+                {/* Description appears for Custom immediately or after subtopic is chosen */}
+                {(mainTopic === 'Custom' || subTopic) && (
                   <label className="span-2">
                     <span>Description <span style={{ color: 'var(--red)' }}>*</span></span>
                     <textarea
@@ -4863,7 +4898,7 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
     };
   }, []);
 
-  // Continuous background poll every 3 seconds as rock-solid fallback
+  // Continuous background poll every 2 seconds for instant live multi-user dashboard sync
   useEffect(() => {
     let isMounted = true;
     const fetchFresh = () => {
@@ -4879,12 +4914,12 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
       }).catch(() => {});
     };
     fetchFresh();
-    const interval = setInterval(fetchFresh, 3000);
+    const interval = setInterval(fetchFresh, 2000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [location.pathname]);
+  }, []);
 
   // Poll notifications from backend every 5 seconds for live badge updates
   useEffect(() => {
