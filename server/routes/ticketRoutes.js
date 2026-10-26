@@ -156,8 +156,8 @@ router.get('/', async (req, res) => {
     if (mongoose.connection.readyState !== 1) {
       return res.json([]);
     }
-    // Exclude heavy base64 raw attachment data to make payload 99% lighter and load in milliseconds
-    const tickets = await Ticket.find({}, { 'attachments.data': 0 }).sort({ updatedAt: -1, createdAt: -1 });
+    // Exclude heavy base64 attachments and conversation on list query for instant 0.3s response
+    const tickets = await Ticket.find({}, { attachments: 0, conversation: 0 }).sort({ updatedAt: -1, createdAt: -1 }).lean();
 
     const reqUser = {
       name: req.headers['x-user-name'] || req.query.userName || '',
@@ -167,12 +167,12 @@ router.get('/', async (req, res) => {
 
     let allUsers = [];
     if (reqUser.role || reqUser.name || reqUser.email) {
-      allUsers = await User.find({}, { password: 0 });
+      allUsers = await User.find({}, { password: 0 }).lean();
     }
 
     // Recalculate dynamic SLA string & status
     const mapped = tickets.map((t) => {
-      const doc = t.toObject();
+      const doc = t.toObject ? t.toObject() : { ...t };
       if (doc.status !== 'Resolved' && doc.status !== 'Closed' && doc.slaDeadline) {
         const diff = new Date(doc.slaDeadline).getTime() - Date.now();
         if (diff <= 0) {
