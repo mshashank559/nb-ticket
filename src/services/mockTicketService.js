@@ -448,13 +448,27 @@ export const ticketApi = {
       const authUser = authUserStr ? JSON.parse(authUserStr) : null;
       const demoRole = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('demoRole') : null;
       const demoUser = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('demoUser') : null;
-      const headers = {};
+      const headers = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      };
       if (demoRole) headers['x-user-role'] = demoRole;
       if (demoUser) headers['x-user-name'] = demoUser;
       if (authUser?.email) headers['x-user-email'] = authUser.email;
 
-      const res = await fetch(apiUrl(`/api/tickets/${id}`), { headers });
-      if (res.ok) return await res.json();
+      const res = await fetch(apiUrl(`/api/tickets/${id}?_t=${Date.now()}`), {
+        headers,
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const fresh = await res.json();
+        if (fresh && fresh.id) {
+          const list = getStoredTickets();
+          const updated = list.map((t) => (t.id === fresh.id ? { ...t, ...fresh } : t));
+          saveStoredTickets(updated);
+        }
+        return fresh;
+      }
     } catch (e) {}
     return getStoredTickets().find((t) => t.id === id);
   },
@@ -891,7 +905,7 @@ export const ticketApi = {
     const targetTicket = updated.find((t) => t.id === ticketId);
     saveStoredTickets(updated);
 
-    // Call dedicated backend messages endpoint asynchronously (non-blocking)
+    // Call dedicated backend messages endpoint and sync returned ticket
     const allUsers = getStoredUsers();
     const currentU = allUsers.find((u) => u.name === userName || (u.email && u.email.toLowerCase() === userName.toLowerCase()));
     let resolvedAuthorEmail = currentU?.email;
@@ -902,18 +916,28 @@ export const ticketApi = {
       } catch (e) {}
     }
 
-    fetch(apiUrl(`/api/tickets/${ticketId}/messages`), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        author: userName,
-        role: userRole,
-        text,
-        authorEmail: resolvedAuthorEmail,
-      }),
-    }).catch((e) => {
+    try {
+      const res = await fetch(apiUrl(`/api/tickets/${ticketId}/messages`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          author: userName,
+          role: userRole,
+          text,
+          authorEmail: resolvedAuthorEmail,
+        }),
+      });
+      if (res.ok) {
+        const serverTicket = await res.json();
+        if (serverTicket && serverTicket.id) {
+          const freshList = getStoredTickets().map((t) => (t.id === serverTicket.id ? { ...t, ...serverTicket } : t));
+          saveStoredTickets(freshList);
+          return serverTicket;
+        }
+      }
+    } catch (e) {
       if (targetTicket) syncToBackend('PUT', `/${ticketId}`, targetTicket);
-    });
+    }
 
     return targetTicket;
   },

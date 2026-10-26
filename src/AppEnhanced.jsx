@@ -127,11 +127,23 @@ export function isTicketForRole(ticket, role, currentUser, usersList = null) {
   const effectiveEmail = (userDoc?.email || authUser?.email || '').trim().toLowerCase();
 
   const assigneeName = (ticket.assignee || '').trim().toLowerCase();
+  const assigneeEmail = (ticket.assigneeEmail || '').trim().toLowerCase();
   const recruiterName = (ticket.recruiter || '').trim().toLowerCase();
+  const recruiterEmail = (ticket.recruiterEmail || '').trim().toLowerCase();
   const salesRepName = (ticket.salesRep || '').trim().toLowerCase();
-  const createdByName = (ticket.createdBy || ticket.creatorName || '').trim().toLowerCase();
+  const salesRepEmail = (ticket.salesRepEmail || '').trim().toLowerCase();
+  const createdByName = (ticket.createdBy || ticket.creatorName || ticket.raisedBy || '').trim().toLowerCase();
+  const creatorEmail = (ticket.creatorEmail || ticket.createdByEmail || '').trim().toLowerCase();
   const salesPoc = (ticket.salesPoc || '').trim().toLowerCase();
+  const salesTl = (ticket.salesTl || ticket.salesTlName || '').trim().toLowerCase();
+  const salesTlEmail = (ticket.salesTlEmail || '').trim().toLowerCase();
+  const targetSalesTlName = (ticket.targetSalesTlName || '').trim().toLowerCase();
+  const targetSalesTlEmail = (ticket.targetSalesTlEmail || '').trim().toLowerCase();
   const marketingEmail = (ticket.marketingTlEmail || '').trim().toLowerCase();
+
+  const threadAuthors = Array.isArray(ticket.thread)
+    ? ticket.thread.map((m) => (m.name || m.author || '').trim().toLowerCase())
+    : [];
 
   const isDirectParticipant = (
     (currentName && (
@@ -139,12 +151,21 @@ export function isTicketForRole(ticket, role, currentUser, usersList = null) {
       recruiterName === currentName ||
       salesRepName === currentName ||
       createdByName === currentName ||
-      salesPoc === currentName
+      salesPoc === currentName ||
+      salesTl === currentName ||
+      targetSalesTlName === currentName ||
+      threadAuthors.includes(currentName)
     )) ||
     (effectiveEmail && (
       salesPoc === effectiveEmail ||
       marketingEmail === effectiveEmail ||
-      assigneeName === effectiveEmail
+      assigneeName === effectiveEmail ||
+      assigneeEmail === effectiveEmail ||
+      targetSalesTlEmail === effectiveEmail ||
+      salesTlEmail === effectiveEmail ||
+      creatorEmail === effectiveEmail ||
+      recruiterEmail === effectiveEmail ||
+      salesRepEmail === effectiveEmail
     ))
   );
 
@@ -182,8 +203,14 @@ export function isTicketForRole(ticket, role, currentUser, usersList = null) {
         reporteeNames.has(assigneeName) ||
         reporteeNames.has(recruiterName) ||
         reporteeNames.has(salesRepName) ||
+        reporteeNames.has(salesTl) ||
+        reporteeNames.has(targetSalesTlName) ||
         reporteeEmails.has(salesPoc) ||
-        reporteeEmails.has(marketingEmail)
+        reporteeEmails.has(marketingEmail) ||
+        reporteeEmails.has(creatorEmail) ||
+        reporteeEmails.has(assigneeEmail) ||
+        reporteeEmails.has(salesTlEmail) ||
+        reporteeEmails.has(targetSalesTlEmail)
       );
     }
 
@@ -3322,20 +3349,81 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
   const [directTicket, setDirectTicket] = useState(null);
   const [fetchingDirect, setFetchingDirect] = useState(false);
 
-  // If ticket is not yet in tickets array (e.g. opened directly via email deep-link), fetch from backend API
+  // Live continuous synchronization: active 1.5s heartbeat while ticket is open + socket listener
   useEffect(() => {
-    if (ticketId && !tickets.some((t) => t.id === ticketId)) {
-      setFetchingDirect(true);
-      ticketApi.get(ticketId)
-        .then((res) => {
-          if (res && res.id) setDirectTicket(res);
-        })
-        .catch(() => {})
-        .finally(() => setFetchingDirect(false));
-    }
-  }, [ticketId, tickets]);
+    if (!ticketId) return;
+    let isMounted = true;
 
-  const ticket = tickets.find((t) => t.id === ticketId) || directTicket;
+    const syncFresh = async () => {
+      try {
+        const fresh = await ticketApi.get(ticketId);
+        if (fresh && fresh.id && isMounted) {
+          setDirectTicket((prev) => {
+            const prevThreadLen = prev?.thread?.length ?? 0;
+            const freshThreadLen = fresh?.thread?.length ?? 0;
+            if (
+              !prev ||
+              freshThreadLen !== prevThreadLen ||
+              fresh.status !== prev.status ||
+              fresh.assignee !== prev.assignee ||
+              fresh.updatedAt !== prev.updatedAt ||
+              fresh.slaState !== prev.slaState
+            ) {
+              return fresh;
+            }
+            return prev;
+          });
+        }
+      } catch (e) {}
+    };
+
+    // First fetch
+    syncFresh();
+
+    // Fast 1.5-second heartbeat
+    const interval = setInterval(syncFresh, 1500);
+
+    // Instant socket message event listener
+    const handleLiveUpdate = (e) => {
+      const data = e.detail;
+      if (data && (data.ticketId === ticketId || data.id === ticketId || data.ticket?.id === ticketId)) {
+        if (data.ticket && data.ticket.id === ticketId) {
+          setDirectTicket(data.ticket);
+        } else {
+          syncFresh();
+        }
+      }
+    };
+
+    window.addEventListener('ticket_message_received', handleLiveUpdate);
+    window.addEventListener('ticket_updated_received', handleLiveUpdate);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      window.removeEventListener('ticket_message_received', handleLiveUpdate);
+      window.removeEventListener('ticket_updated_received', handleLiveUpdate);
+    };
+  }, [ticketId]);
+
+  const storeTicket = tickets.find((t) => t.id === ticketId);
+  const ticket = useMemo(() => {
+    if (!directTicket && !storeTicket) return null;
+    if (!directTicket) return storeTicket;
+    if (!storeTicket) return directTicket;
+
+    const directThreadLen = directTicket.thread?.length || 0;
+    const storeThreadLen = storeTicket.thread?.length || 0;
+
+    return {
+      ...storeTicket,
+      ...directTicket,
+      thread: directThreadLen >= storeThreadLen ? directTicket.thread : storeTicket.thread,
+      timeline: (directTicket.timeline?.length || 0) >= (storeTicket.timeline?.length || 0)
+        ? directTicket.timeline
+        : storeTicket.timeline,
+    };
+  }, [storeTicket, directTicket]);
   const [replyText, setReplyText] = useState('');
   const [selectedTL, setSelectedTL] = useState('');
   const [showReopenModal, setShowReopenModal] = useState(false);
@@ -3443,11 +3531,38 @@ export function TicketDetail({ role, currentUser, tickets, onAssign, onEscalate,
     onAssign(ticket.id, targetUser, currentUser);
   };
 
-  const handleReplySubmit = (e) => {
+  const handleReplySubmit = async (e) => {
     e.preventDefault();
     if (!replyText.trim()) return;
-    onAddReply(ticket.id, currentUser, role.name, replyText);
+    const sentText = replyText.trim();
     setReplyText('');
+
+    // Optimistic message displayed in 0ms on sender's screen
+    const optimisticMsg = {
+      id: `msg-${Date.now()}`,
+      name: currentUser,
+      role: role.name || role.id || 'User',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: sentText,
+      mine: true,
+      deliveryStatus: 'sent',
+    };
+
+    setDirectTicket((prev) => {
+      const base = prev || ticket;
+      if (!base) return prev;
+      return {
+        ...base,
+        thread: [...(base.thread || []), optimisticMsg],
+      };
+    });
+
+    try {
+      const res = await onAddReply(ticket.id, currentUser, role.name, sentText);
+      if (res && res.id) {
+        setDirectTicket(res);
+      }
+    } catch (err) {}
   };
 
   const handleConfirmReopen = async (e) => {
@@ -4881,9 +4996,29 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
         }).catch(() => {});
       };
 
+      const handleTicketUpdated = (data) => {
+        refreshTickets();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ticket_updated_received', { detail: data }));
+        }
+      };
+
+      const handleTicketMessage = (data) => {
+        refreshTickets();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ticket_message_received', { detail: data }));
+        }
+      };
+
       socket.on('ticket_created', refreshTickets);
       socket.on('ticket_assigned', refreshTickets);
       socket.on('ticket_resolved', refreshTickets);
+      socket.on('ticket_reopened', refreshTickets);
+      socket.on('ticket_escalated', refreshTickets);
+      socket.on('ticket_relaxed', refreshTickets);
+      socket.on('ticket_closed', refreshTickets);
+      socket.on('ticket_updated', handleTicketUpdated);
+      socket.on('ticket_message', handleTicketMessage);
       socket.on('tickets_changed', refreshTickets);
       socket.on('notification_new', refreshNotifs);
       // Live user enrollment & login updates — refreshes User Management table in real-time
@@ -5014,9 +5149,10 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
     setTicketsState((prev) =>
       prev.map((t) => (t.id === ticketId ? { ...t, thread: [...(t.thread || []), newMsg] } : t))
     );
-    await ticketApi.addReply(ticketId, userName, userRole, text);
+    const serverTicket = await ticketApi.addReply(ticketId, userName, userRole, text);
     const updatedList = await ticketApi.list();
     setTicketsState(updatedList);
+    return serverTicket;
   };
 
   const handleCreateTicket = async (payload) => {

@@ -7,6 +7,24 @@ import { emailService } from '../services/emailService.js';
 
 const router = express.Router();
 
+// Helper to reliably broadcast ticket changes to all connected clients
+const broadcastTicketEvent = (req, eventName, ticketDoc) => {
+  try {
+    const io = req.app?.get('io') || global.__io;
+    if (io) {
+      if (eventName && ticketDoc) {
+        io.emit(eventName, ticketDoc);
+      }
+      io.emit('tickets_changed', ticketDoc ? { id: ticketDoc.id } : {});
+      if (ticketDoc) {
+        io.emit('ticket_updated', ticketDoc);
+      }
+    }
+  } catch (e) {
+    console.error('Socket broadcast error:', e);
+  }
+};
+
 // Helper to check if requester is authorized to view a ticket
 const isUserAuthorizedForTicket = (ticket, userCtx, allUsers = []) => {
   if (!ticket || !userCtx) return true;
@@ -23,29 +41,51 @@ const isUserAuthorizedForTicket = (ticket, userCtx, allUsers = []) => {
 
   const effectiveRole = (role || userDoc?.role || '').trim().toLowerCase();
   const effectiveEmail = (email || userDoc?.email || '').trim().toLowerCase();
+  const effectiveName = (name || userDoc?.name || '').trim().toLowerCase();
 
   // Process Analyst & Admin always see ALL tickets
   if (effectiveRole === 'process_analyst' || effectiveRole === 'admin') return true;
 
-  const tCreator = (ticket.createdBy || ticket.creatorName || '').trim().toLowerCase();
+  const tCreator = (ticket.createdBy || ticket.creatorName || ticket.raisedBy || '').trim().toLowerCase();
+  const tCreatorEmail = (ticket.creatorEmail || ticket.createdByEmail || '').trim().toLowerCase();
   const tAssignee = (ticket.assignee || '').trim().toLowerCase();
+  const tAssigneeEmail = (ticket.assigneeEmail || '').trim().toLowerCase();
   const tRecruiter = (ticket.recruiter || '').trim().toLowerCase();
+  const tRecruiterEmail = (ticket.recruiterEmail || '').trim().toLowerCase();
   const tSalesRep = (ticket.salesRep || '').trim().toLowerCase();
+  const tSalesRepEmail = (ticket.salesRepEmail || '').trim().toLowerCase();
   const tSalesPoc = (ticket.salesPoc || '').trim().toLowerCase();
+  const tSalesTl = (ticket.salesTl || ticket.salesTlName || '').trim().toLowerCase();
+  const tSalesTlEmail = (ticket.salesTlEmail || '').trim().toLowerCase();
+  const tTargetSalesTlName = (ticket.targetSalesTlName || '').trim().toLowerCase();
+  const tTargetSalesTlEmail = (ticket.targetSalesTlEmail || '').trim().toLowerCase();
   const tMktEmail = (ticket.marketingTlEmail || '').trim().toLowerCase();
 
+  const threadAuthors = Array.isArray(ticket.thread)
+    ? ticket.thread.map((m) => (m.name || m.author || '').trim().toLowerCase())
+    : [];
+
   const isDirectParticipant =
-    (name && (
-      tCreator === name ||
-      tAssignee === name ||
-      tRecruiter === name ||
-      tSalesRep === name ||
-      tSalesPoc === name
+    (effectiveName && (
+      tCreator === effectiveName ||
+      tAssignee === effectiveName ||
+      tRecruiter === effectiveName ||
+      tSalesRep === effectiveName ||
+      tSalesPoc === effectiveName ||
+      tSalesTl === effectiveName ||
+      tTargetSalesTlName === effectiveName ||
+      threadAuthors.includes(effectiveName)
     )) ||
     (effectiveEmail && (
+      tCreatorEmail === effectiveEmail ||
+      tAssigneeEmail === effectiveEmail ||
       tSalesPoc === effectiveEmail ||
       tMktEmail === effectiveEmail ||
-      tAssignee === effectiveEmail
+      tAssignee === effectiveEmail ||
+      tSalesTlEmail === effectiveEmail ||
+      tTargetSalesTlEmail === effectiveEmail ||
+      tRecruiterEmail === effectiveEmail ||
+      tSalesRepEmail === effectiveEmail
     ));
 
   if (effectiveRole === 'sales_tl' || effectiveRole === 'marketing_tl') {
@@ -54,7 +94,7 @@ const isUserAuthorizedForTicket = (ticket, userCtx, allUsers = []) => {
 
   if (effectiveRole === 'manager') {
     const escalatedTo = (ticket.escalatedTo || '').toLowerCase();
-    if (escalatedTo && name && escalatedTo.includes(name)) return true;
+    if (escalatedTo && effectiveName && escalatedTo.includes(effectiveName)) return true;
     if (isDirectParticipant) return true;
 
     // Reporting hierarchy check: does the creator or assignee report to this manager?
@@ -62,7 +102,7 @@ const isUserAuthorizedForTicket = (ticket, userCtx, allUsers = []) => {
       const mName = (u.manager || '').toLowerCase();
       const mEmail = (u.managerEmail || '').toLowerCase();
       return (
-        (name && mName === name) ||
+        (effectiveName && mName === effectiveName) ||
         (effectiveEmail && mEmail === effectiveEmail) ||
         (userDoc?.id && u.managerId === userDoc.id)
       );
@@ -76,8 +116,14 @@ const isUserAuthorizedForTicket = (ticket, userCtx, allUsers = []) => {
         reporteeNames.has(tAssignee) ||
         reporteeNames.has(tRecruiter) ||
         reporteeNames.has(tSalesRep) ||
+        reporteeNames.has(tSalesTl) ||
+        reporteeNames.has(tTargetSalesTlName) ||
         reporteeEmails.has(tSalesPoc) ||
-        reporteeEmails.has(tMktEmail)
+        reporteeEmails.has(tMktEmail) ||
+        reporteeEmails.has(tCreatorEmail) ||
+        reporteeEmails.has(tAssigneeEmail) ||
+        reporteeEmails.has(tSalesTlEmail) ||
+        reporteeEmails.has(tTargetSalesTlEmail)
       );
     }
 
@@ -162,6 +208,7 @@ router.put('/:id', async (req, res) => {
     delete updateData.createdAt;
     delete updateData.updatedAt;
     const updated = await Ticket.findOneAndUpdate({ id: req.params.id }, updateData, { new: true, upsert: true });
+    broadcastTicketEvent(req, 'ticket_updated', updated);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -175,6 +222,7 @@ router.patch('/:id', async (req, res) => {
     delete updateData.updatedAt;
     const updated = await Ticket.findOneAndUpdate({ id: req.params.id }, updateData, { new: true });
     if (!updated) return res.status(404).json({ error: 'Ticket not found' });
+    broadcastTicketEvent(req, 'ticket_updated', updated);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -184,6 +232,10 @@ router.patch('/:id', async (req, res) => {
 // GET /api/tickets/:id - Single ticket
 router.get('/:id', async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const ticket = await Ticket.findOne({ id: req.params.id });
     if (!ticket) {
       return res.status(404).json({ error: 'Ticket not found' });
@@ -342,10 +394,7 @@ router.post('/', async (req, res) => {
     console.log(`[Ticket Created] ID: ${newTicket.id} AssignedTo: ${newTicket.assignee}`);
 
     // Emit live WebSocket update so all connected users see it immediately at the top
-    try {
-      req.app?.get('io')?.emit('ticket_created', newTicket);
-      req.app?.get('io')?.emit('tickets_changed');
-    } catch (e) {}
+    broadcastTicketEvent(req, 'ticket_created', newTicket);
 
     // Fire Created Notification & Email from Centralized Support Email
     emailService
@@ -469,10 +518,7 @@ router.patch('/:id/assign', async (req, res) => {
     }
 
     // Emit live WebSocket update so all connected users see it immediately at the top
-    try {
-      req.app?.get('io')?.emit('ticket_assigned', updated);
-      req.app?.get('io')?.emit('tickets_changed');
-    } catch (e) {}
+    broadcastTicketEvent(req, 'ticket_assigned', updated);
 
     // Send Assigned Notification & Email from Central Support Email
     emailService
@@ -553,7 +599,7 @@ router.patch('/:id/resolve', async (req, res) => {
       })
       .catch((e) => console.error('[Resolve Notification Error]:', e.message));
 
-    try { req.app?.get('io')?.emit('tickets_changed'); } catch (e) {}
+    broadcastTicketEvent(req, 'ticket_resolved', updated);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -659,7 +705,7 @@ router.patch('/:id/reopen', async (req, res) => {
       })
       .catch((e) => console.error('[Reopen Notification Error]:', e.message));
 
-    try { req.app?.get('io')?.emit('tickets_changed'); } catch (e) {}
+    broadcastTicketEvent(req, 'ticket_reopened', updated);
     res.json(updated);
   } catch (error) {
     console.error('Error in reopen:', error);
@@ -735,6 +781,7 @@ router.patch('/:id/escalate', async (req, res) => {
       })
       .catch((e) => console.error('[Escalate Notification Error]:', e.message));
 
+    broadcastTicketEvent(req, 'ticket_escalated', updated);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -783,8 +830,7 @@ router.patch('/:id/relax', async (req, res) => {
         reason: reason || '1-day SLA extension granted by Process Analyst',
         newDeadline: extendedDeadline.toLocaleString(),
       })
-      .catch((e) => console.error('[Extension Notification Error]:', e.message));
-
+    broadcastTicketEvent(req, 'ticket_relaxed', updated);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -828,6 +874,7 @@ router.patch('/:id/close', async (req, res) => {
       })
       .catch((e) => console.error('[Close Notification Error]:', e.message));
 
+    broadcastTicketEvent(req, 'ticket_closed', updated);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -904,7 +951,14 @@ const handleReplyMessage = async (req, res) => {
         console.error('Error dispatching reply email:', err);
       });
 
-    try { req.app?.get('io')?.emit('tickets_changed'); } catch (e) {}
+    try {
+      const io = req.app?.get('io') || global.__io;
+      if (io) {
+        io.emit('ticket_message', { ticketId: req.params.id, message: newMsg, ticket: updated });
+        io.emit('ticket_updated', updated);
+        io.emit('tickets_changed', { id: updated.id });
+      }
+    } catch (e) {}
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -919,7 +973,7 @@ router.delete('/clear-all', async (req, res) => {
   try {
     const result = await Ticket.deleteMany({});
     console.log(`[Tickets Cleared] ${result.deletedCount} tickets deleted.`);
-    try { req.app?.get('io')?.emit('tickets_changed'); } catch (e) {}
+    broadcastTicketEvent(req, 'tickets_changed', null);
     res.json({ message: 'All tickets cleared successfully', deletedCount: result.deletedCount });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -931,6 +985,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const deleted = await Ticket.findOneAndDelete({ id: req.params.id });
     if (!deleted) return res.status(404).json({ error: 'Ticket not found' });
+    broadcastTicketEvent(req, 'tickets_changed', deleted);
     res.json({ message: 'Ticket deleted successfully', ticket: deleted });
   } catch (error) {
     res.status(500).json({ error: error.message });
