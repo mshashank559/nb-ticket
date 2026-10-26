@@ -460,4 +460,20 @@
   color: #F59E0B !important;
 }
 
+.kpi-skeleton-pulse {
+  display: inline-block;
+  width: 32px;
+  height: 24px;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: kpiShimmer 1.2s infinite ease-in-out;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+@keyframes kpiShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+
 

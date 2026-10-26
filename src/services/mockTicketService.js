@@ -285,8 +285,40 @@ try {
   localStorage.removeItem('netbounce_users_v1');
 } catch (e) {}
 
-export const getStoredTickets = () => {
+export const getStoredTickets = (userIdentifier = null) => {
   try {
+    let email = null;
+    if (typeof userIdentifier === 'object' && userIdentifier !== null) {
+      email = userIdentifier.email;
+    } else if (typeof userIdentifier === 'string' && userIdentifier.includes('@')) {
+      email = userIdentifier;
+    } else if (typeof userIdentifier === 'string' && userIdentifier.trim()) {
+      try {
+        const users = getStoredUsers();
+        const found = users.find((u) =>
+          (u.name && u.name.trim().toLowerCase() === userIdentifier.trim().toLowerCase()) ||
+          (u.id && u.id.trim().toLowerCase() === userIdentifier.trim().toLowerCase())
+        );
+        if (found?.email) email = found.email;
+      } catch (e) {}
+    }
+
+    if (!email) {
+      try {
+        const u = JSON.parse(sessionStorage.getItem('authUser') || '{}');
+        email = u.email;
+      } catch (e) {}
+    }
+
+    if (email) {
+      const userKey = `netbounce_tickets_${email.toLowerCase().trim()}`;
+      const userData = localStorage.getItem(userKey);
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    }
+
     const data = localStorage.getItem(TICKETS_KEY);
     if (data) return JSON.parse(data);
   } catch (e) {
@@ -295,8 +327,35 @@ export const getStoredTickets = () => {
   return initialTickets;
 };
 
-export const saveStoredTickets = (ticketsList) => {
+export const saveStoredTickets = (ticketsList, userIdentifier = null) => {
   try {
+    let email = null;
+    if (typeof userIdentifier === 'object' && userIdentifier !== null) {
+      email = userIdentifier.email;
+    } else if (typeof userIdentifier === 'string' && userIdentifier.includes('@')) {
+      email = userIdentifier;
+    } else if (typeof userIdentifier === 'string' && userIdentifier.trim()) {
+      try {
+        const users = getStoredUsers();
+        const found = users.find((u) =>
+          (u.name && u.name.trim().toLowerCase() === userIdentifier.trim().toLowerCase()) ||
+          (u.id && u.id.trim().toLowerCase() === userIdentifier.trim().toLowerCase())
+        );
+        if (found?.email) email = found.email;
+      } catch (e) {}
+    }
+
+    if (!email) {
+      try {
+        const u = JSON.parse(sessionStorage.getItem('authUser') || '{}');
+        email = u.email;
+      } catch (e) {}
+    }
+
+    if (email && Array.isArray(ticketsList)) {
+      const userKey = `netbounce_tickets_${email.toLowerCase().trim()}`;
+      localStorage.setItem(userKey, JSON.stringify(ticketsList));
+    }
     localStorage.setItem(TICKETS_KEY, JSON.stringify(ticketsList));
   } catch (e) {}
 };
@@ -408,16 +467,18 @@ const syncToBackend = async (method, path = '', body = null) => {
 
 // API Service Interface (Connected to MongoDB Backend with Local Fallback)
 export const ticketApi = {
-  list: async () => {
+  list: async (overrideUser = null) => {
     try {
       const authUserStr = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('authUser') : null;
-      const authUser = authUserStr ? JSON.parse(authUserStr) : null;
+      let authUser = authUserStr ? JSON.parse(authUserStr) : null;
+      if (overrideUser) authUser = { ...authUser, ...overrideUser };
+
       const demoRole = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('demoRole') : null;
       const demoUser = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('demoUser') : null;
 
-      const effectiveRole = demoRole || authUser?.role || '';
-      const effectiveName = demoUser || authUser?.name || '';
-      const effectiveEmail = authUser?.email || '';
+      const effectiveRole = overrideUser?.role || demoRole || authUser?.role || '';
+      const effectiveName = overrideUser?.name || demoUser || authUser?.name || '';
+      const effectiveEmail = overrideUser?.email || authUser?.email || '';
 
       const headers = {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -434,12 +495,12 @@ export const ticketApi = {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          saveStoredTickets(data);
+          saveStoredTickets(data, effectiveEmail);
           return data;
         }
       }
     } catch (e) {}
-    return getStoredTickets();
+    return getStoredTickets(overrideUser?.email);
   },
 
   get: async (id) => {

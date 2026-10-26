@@ -697,7 +697,7 @@ export function TicketTable({ rows, currentRole, onAssign, onEscalate, onRelax, 
   );
 }
 
-export function Dashboard({ role, currentUser, tickets, onAssign, onEscalate, onRelax }) {
+export function Dashboard({ role, currentUser, tickets, loading = false, onAssign, onEscalate, onRelax }) {
   const navigate = useNavigate();
 
   const authorizedTickets = useMemo(() => {
@@ -824,7 +824,13 @@ export function Dashboard({ role, currentUser, tickets, onAssign, onEscalate, on
                 <Icon size={18} />
               </div>
               <div className="metric-label">{label}</div>
-              <strong>{value}</strong>
+              <strong>
+                {loading && authorizedTickets.length === 0 ? (
+                  <span className="kpi-skeleton-pulse" />
+                ) : (
+                  value
+                )}
+              </strong>
               <span className="metric-hint">{hint}</span>
             </div>
           );
@@ -890,8 +896,17 @@ export function Dashboard({ role, currentUser, tickets, onAssign, onEscalate, on
             ))}
             {attentionTickets.length === 0 && (
               <div style={{ padding: '24px', textAlign: 'center', color: 'var(--muted)', fontSize: '12px' }}>
-                <CheckCircle2 size={24} style={{ color: 'var(--green)', margin: '0 auto 8px', display: 'block' }} />
-                All SLAs are in healthy state. No priority interventions required.
+                {loading && authorizedTickets.length === 0 ? (
+                  <>
+                    <span className="kpi-skeleton-pulse" style={{ width: '48px', height: '16px', margin: '0 auto 8px', display: 'block' }} />
+                    Synchronizing active queue...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={24} style={{ color: 'var(--green)', margin: '0 auto 8px', display: 'block' }} />
+                    All SLAs are in healthy state. No priority interventions required.
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -4655,10 +4670,16 @@ export function Login({ onLogin }) {
         roles.find((r) => r.name.toLowerCase() === (updatedUser.roleName || '').toLowerCase()) ||
         roles[0];
 
-      setTimeout(() => {
-        setLoading(false);
-        onLogin && onLogin(updatedUser, targetRole);
-      }, 300);
+      // Pre-fetch user's authorized tickets before transitioning to dashboard for instant zero-delay rendering
+      let prefetchedTickets = null;
+      try {
+        prefetchedTickets = await ticketApi.list(updatedUser);
+      } catch (e) {
+        console.warn('Pre-fetch failed on login, falling back to local cache/poll:', e);
+      }
+
+      setLoading(false);
+      onLogin && onLogin(updatedUser, targetRole, prefetchedTickets);
     } catch (err) {
       setLoading(false);
       setError('An error occurred during authentication. Please try again.');
@@ -4918,14 +4939,23 @@ export function NotFound() {
   );
 }
 
-export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
+export function Shell({ role, currentUser, initialTickets, onSignOut, onSwitchUser }) {
   const location = useLocation();
 
-  // Persistent tickets & users state
-  const [ticketsState, setTicketsState] = useState(() => getStoredTickets());
+  // Persistent tickets & users state (user-scoped)
+  const [ticketsState, setTicketsState] = useState(() => {
+    if (Array.isArray(initialTickets) && initialTickets.length > 0) return initialTickets;
+    return getStoredTickets(currentUser);
+  });
   const [usersState, setUsersState] = useState(() => getStoredUsers());
   const [notifsState, setNotifsState] = useState(() => getStoredNotifications());
   const [shellSecurityBlock, setShellSecurityBlock] = useState(null);
+  const [isTicketsLoading, setIsTicketsLoading] = useState(() => {
+    const cached = (Array.isArray(initialTickets) && initialTickets.length > 0)
+      ? initialTickets
+      : getStoredTickets(currentUser);
+    return !Array.isArray(cached) || cached.length === 0;
+  });
 
   // Periodic Security Schedule & Device Monitor
   useEffect(() => {
@@ -5036,12 +5066,26 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
   // Continuous background poll every 2 seconds for instant live multi-user dashboard sync
   useEffect(() => {
     let isMounted = true;
+    if (Array.isArray(initialTickets) && initialTickets.length > 0) {
+      setTicketsState(initialTickets);
+      setIsTicketsLoading(false);
+    } else {
+      const cached = getStoredTickets(currentUser);
+      if (Array.isArray(cached) && cached.length > 0) {
+        setTicketsState(cached);
+        setIsTicketsLoading(false);
+      }
+    }
+
     const fetchFresh = () => {
       ticketApi.list().then((list) => {
         if (isMounted && Array.isArray(list)) {
           setTicketsState(list);
+          setIsTicketsLoading(false);
         }
-      }).catch(() => {});
+      }).catch(() => {
+        if (isMounted) setIsTicketsLoading(false);
+      });
       userApi.list().then((uList) => {
         if (isMounted && Array.isArray(uList)) {
           setUsersState(uList);
@@ -5054,7 +5098,7 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
       isMounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [currentUser, role.id, initialTickets]);
 
   // Poll notifications from backend every 5 seconds for live badge updates
   useEffect(() => {
@@ -5224,6 +5268,7 @@ export function Shell({ role, currentUser, onSignOut, onSwitchUser }) {
                   role={role}
                   currentUser={currentUser}
                   tickets={ticketsState}
+                  loading={isTicketsLoading}
                   onAssign={handleAssign}
                   onEscalate={handleEscalate}
                   onRelax={handleRelax}
@@ -5379,11 +5424,16 @@ export default function AppEnhanced() {
     return sessionStorage.getItem('isAuthenticated') === 'true' || !!sessionStorage.getItem('demoUser');
   });
 
-  const handleLogin = (user, userRole) => {
+  const [cachedUserTickets, setCachedUserTickets] = useState(null);
+
+  const handleLogin = (user, userRole, prefetchedTickets = null) => {
     sessionStorage.setItem('isAuthenticated', 'true');
     sessionStorage.setItem('demoRole', userRole.id);
     sessionStorage.setItem('demoUser', user.name);
     sessionStorage.setItem('authUser', JSON.stringify(user));
+    if (Array.isArray(prefetchedTickets)) {
+      setCachedUserTickets(prefetchedTickets);
+    }
     setRole(userRole);
     setCurrentUser(user.name);
     setIsAuthenticated(true);
@@ -5393,6 +5443,7 @@ export default function AppEnhanced() {
     sessionStorage.setItem('demoRole', userRole.id);
     sessionStorage.setItem('demoUser', user.name);
     sessionStorage.setItem('authUser', JSON.stringify(user));
+    setCachedUserTickets(null);
     setRole(userRole);
     setCurrentUser(user.name);
   };
@@ -5402,6 +5453,7 @@ export default function AppEnhanced() {
     sessionStorage.removeItem('demoRole');
     sessionStorage.removeItem('demoUser');
     sessionStorage.removeItem('authUser');
+    setCachedUserTickets(null);
     setIsAuthenticated(false);
   };
 
@@ -5424,6 +5476,7 @@ export default function AppEnhanced() {
               <Shell
                 role={role}
                 currentUser={currentUser}
+                initialTickets={cachedUserTickets}
                 onSignOut={handleSignOut}
                 onSwitchUser={handleSwitchUser}
               />
