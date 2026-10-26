@@ -3841,45 +3841,23 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
           </div>
         </div>
 
-        {/* Recruiter & Sales Points of Contact (Exclusively for Sales TL) */}
+        {/* Recruiter & Placement Team Context (Optional context fields) */}
         {formType === 'sales' && (
           <div className="form-section">
             <div className="form-section-heading">
               <span className="section-number">02</span>
               <div>
                 <h2>Recruiter & Placement Team Context</h2>
-                <p>Assigned recruiter details, Marketing TL & Representative information.</p>
+                <p>Assigned recruiter details and representative information.</p>
               </div>
             </div>
             <div className="form-grid">
-              <label>
+              <label className="span-2">
                 <span>Senior Recruiter</span>
                 <input
                   placeholder="Enter Senior Recruiter name (optional)"
                   value={seniorRecruiter}
                   onChange={(e) => setSeniorRecruiter(e.target.value)}
-                />
-              </label>
-              <label>
-                <span>Marketing TL <span style={{ color: 'var(--red)' }}>*</span></span>
-                <select
-                  required
-                  value={recruiter}
-                  onChange={handleRecruiterSelect}
-                >
-                  <option value="">— Select Marketing TL —</option>
-                  {marketingTLs.map((tl) => (
-                    <option key={tl.id} value={tl.name}>{tl.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="span-2">
-                <span>Marketing TL Mail ID</span>
-                <input
-                  readOnly
-                  placeholder="Auto-filled from Marketing TL"
-                  value={marketingTlEmail}
-                  style={{ background: '#f8fafc', cursor: 'not-allowed', color: '#475569' }}
                 />
               </label>
             </div>
