@@ -3510,14 +3510,31 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
     setTargetLeadEmail('');
   };
 
+  const isLeadOrBdUser = useMemo(() => {
+    const roleId = String(role?.id || '').toLowerCase();
+    const dept = String(sourceDepartment || role?.team || authUserObj?.department || '').toLowerCase();
+    const roleTitle = String(role?.title || role?.name || authUserObj?.roleName || authUserObj?.role || '').toLowerCase();
+    const userEmail = String(authUserObj?.email || '').toLowerCase();
+    return (
+      roleId === 'lead_tl' ||
+      roleId.includes('lead') ||
+      roleId.includes('bd') ||
+      dept.includes('lead') ||
+      dept.includes('bd') ||
+      roleTitle.includes('lead') ||
+      roleTitle.includes('bd') ||
+      userEmail.includes('jiya')
+    );
+  }, [role, sourceDepartment, authUserObj]);
+
   // 'sales' = Structured 10-topic selection (Sales TL / standard placement form)
-  // 'marketing' = Custom free-text issue input (Marketing TL)
-  const [formType, setFormType] = useState(() => (role.id === 'marketing_tl' ? 'marketing' : 'sales'));
+  // 'marketing' = Custom free-text issue input (Marketing TL, Lead TL, BD Member)
+  const [formType, setFormType] = useState(() => (role.id === 'marketing_tl' || isLeadOrBdUser ? 'marketing' : 'sales'));
 
   // Immediately synchronize form view when role changes (e.g., from top bar switcher)
   useEffect(() => {
-    setFormType(role.id === 'marketing_tl' ? 'marketing' : 'sales');
-  }, [role.id]);
+    setFormType(role.id === 'marketing_tl' || isLeadOrBdUser ? 'marketing' : 'sales');
+  }, [role.id, isLeadOrBdUser]);
 
   const [candidateName, setCandidateName] = useState('');
   const [candidateEmail, setCandidateEmail] = useState('');
@@ -3610,7 +3627,7 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    const isSales = formType === 'sales';
+    const isSales = formType === 'sales' && !isLeadOrBdUser;
 
     // Validation for Marketing TL -> Sales ticket: must select a Sales TL
     if (role.id === 'marketing_tl' && targetDepartment === 'Sales' && !isSales && !selectedSalesTl?.id) {
@@ -3619,17 +3636,23 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
     }
 
     const isCustomSales = isSales && mainTopic === 'Custom';
-    const finalTitle = isCustomSales
+    const finalTitle = isLeadOrBdUser
+      ? (customIssueTitle.trim() || 'BD / Lead Concern')
+      : isCustomSales
       ? (customMainTopic.trim() || 'Custom Placement Concern')
       : isSales
       ? mainTopic
       : customIssueTitle;
-    const finalCategory = isCustomSales
+    const finalCategory = isLeadOrBdUser
+      ? 'Custom BD / Lead Issue'
+      : isCustomSales
       ? (customMainTopic.trim() || 'Custom Placement Concern')
       : isSales
       ? mainTopic
       : 'Custom Marketing Issue';
-    const finalSubCategory = isCustomSales
+    const finalSubCategory = isLeadOrBdUser
+      ? (customIssueTitle.trim() || 'Custom Concern')
+      : isCustomSales
       ? 'Custom Concern'
       : isSales
       ? subTopic
@@ -3644,15 +3667,15 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
 
     const newTicketPayload = {
       title: finalTitle,
-      candidate: candidateName,
-      email: candidateEmail,
-      phone: candidatePhone,
-      sourceDepartment: sourceDepartment || (isSales ? 'Sales' : 'Marketing'),
+      candidate: candidateName || (isLeadOrBdUser ? 'N/A' : ''),
+      email: candidateEmail || '',
+      phone: candidatePhone || '',
+      sourceDepartment: sourceDepartment || (isLeadOrBdUser ? 'Lead Team' : (isSales ? 'Sales' : 'Marketing')),
       targetDepartment: targetDepartment || (isSales ? 'Marketing' : 'Sales'),
-      team: sourceDepartment || (isSales ? 'Sales' : 'Marketing'),
+      team: sourceDepartment || (isLeadOrBdUser ? 'Lead Team' : (isSales ? 'Sales' : 'Marketing')),
       targetTeam: targetDepartment || (isSales ? 'Marketing' : 'Sales'),
-      subTeam: isSales ? 'Placement Ops' : 'Inbound Marketing',
-      creatorRole: role.id || (isSales ? 'sales_tl' : 'marketing_tl'),
+      subTeam: isLeadOrBdUser ? 'BD Operations' : (isSales ? 'Placement Ops' : 'Inbound Marketing'),
+      creatorRole: role.id || (isLeadOrBdUser ? 'lead_tl' : (isSales ? 'sales_tl' : 'marketing_tl')),
       createdBy: currentUser,
       creatorName: currentUser,
       creatorEmail: currentUserEmail,
@@ -3784,8 +3807,8 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
             )}
           </div>
         </div>
-        {/* Candidate Information - Excluded when target department is Lead Team */}
-        {!/lead/i.test(targetDepartment || '') && (
+        {/* Candidate Information - Excluded when target department is Lead Team or user is BD / Lead member */}
+        {!/lead/i.test(targetDepartment || '') && !isLeadOrBdUser && (
           <div className="form-section">
             <div className="form-section-heading">
               <span className="section-number">01</span>
@@ -3799,7 +3822,7 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
                 <span>Candidate Name <span style={{ color: 'var(--red)' }}>*</span></span>
                 <input
                   data-testid="ticket-candidate-name-input"
-                  required={!/lead/i.test(targetDepartment || '')}
+                  required={!/lead/i.test(targetDepartment || '') && !isLeadOrBdUser}
                   placeholder="e.g. Rahul Sharma"
                   value={candidateName}
                   onChange={(e) => setCandidateName(e.target.value)}
@@ -3810,7 +3833,7 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
                 <input
                   data-testid="ticket-candidate-email-input"
                   type="email"
-                  required={!/lead/i.test(targetDepartment || '')}
+                  required={!/lead/i.test(targetDepartment || '') && !isLeadOrBdUser}
                   placeholder="candidate@email.com"
                   value={candidateEmail}
                   onChange={(e) => setCandidateEmail(e.target.value)}
@@ -3821,7 +3844,7 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
                 <input
                   data-testid="ticket-candidate-phone-input"
                   type="tel"
-                  required={!/lead/i.test(targetDepartment || '')}
+                  required={!/lead/i.test(targetDepartment || '') && !isLeadOrBdUser}
                   placeholder="+91 98765 43210"
                   value={candidatePhone}
                   onChange={(e) => setCandidatePhone(e.target.value)}
@@ -3831,8 +3854,8 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
           </div>
         )}
 
-        {/* Recruiter & Placement Team Context (Optional context fields) */}
-        {formType === 'sales' && (
+        {/* Recruiter & Placement Team Context (Optional context fields) - Strictly hidden for BD / Lead Team */}
+        {!isLeadOrBdUser && formType === 'sales' && (
           <div className="form-section">
             <div className="form-section-heading">
               <span className="section-number">02</span>
@@ -3858,13 +3881,15 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
         {/* Issue Details */}
         <div className="form-section">
           <div className="form-section-heading">
-            <span className="section-number">03</span>
+            <span className="section-number">{isLeadOrBdUser ? '01' : '03'}</span>
             <div>
-              <h2>{formType === 'sales' ? 'Structured Issue Selection' : 'Custom Issue & Concern'}</h2>
+              <h2>{!isLeadOrBdUser && formType === 'sales' ? 'Structured Issue Selection' : 'Custom Issue & Concern'}</h2>
               <p>
-                {formType === 'sales'
+                {!isLeadOrBdUser && formType === 'sales'
                   ? 'Two-level topic selection for Sales placements using the 10 standard issue categories.'
-                  : 'Marketing TL enters a custom issue title for this concern.'}
+                  : (isLeadOrBdUser
+                      ? 'Enter custom topic and description for this concern.'
+                      : 'Marketing TL enters a custom issue title for this concern.')}
               </p>
             </div>
           </div>
@@ -3884,7 +3909,7 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
               </select>
             </label>
 
-            {formType === 'sales' ? (
+            {!isLeadOrBdUser && formType === 'sales' ? (
               <>
                 <label className="span-2">
                   <span>Select Main Topic <span style={{ color: 'var(--red)' }}>*</span></span>
@@ -3946,7 +3971,7 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
                   <span>Custom Issue / Concern Title <span style={{ color: 'var(--red)' }}>*</span></span>
                   <input
                     required
-                    placeholder="Enter custom issue (e.g. Candidate not receiving interview updates)"
+                    placeholder="Enter custom issue (e.g. Lead status update / Client escalation)"
                     value={customIssueTitle}
                     onChange={(e) => setCustomIssueTitle(e.target.value)}
                   />
@@ -3955,7 +3980,7 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
                   <span>Description <span style={{ color: 'var(--red)' }}>*</span></span>
                   <textarea
                     required
-                    placeholder="Provide full description of the marketing operational or cross-team issue..."
+                    placeholder="Provide full description of the issue or concern..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                   />
@@ -3968,7 +3993,7 @@ export function CreateTicket({ role, currentUser, departments = [], onCreateTick
         {/* Attachment / Photo Upload */}
         <div className="form-section">
           <div className="form-section-heading">
-            <span className="section-number">04</span>
+            <span className="section-number">{isLeadOrBdUser ? '02' : '04'}</span>
             <div>
               <h2>Attachments & Photos <small>Optional</small></h2>
               <p>Upload screenshots, PDFs, Excel sheets, audio logs, or identity documents.</p>
